@@ -1,0 +1,20 @@
+{
+  "name": "jackett-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Vue 3 source for the Jackett Rust built-in web UI; build output goes to jackett-server/wwwroot",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^6.3.5",
+    "vite-plugin-singlefile": "^2.2.0"
+  }
+}

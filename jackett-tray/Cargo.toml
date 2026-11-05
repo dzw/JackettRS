@@ -1,0 +1,17 @@
+[package]
+name = "jackett-tray"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jackett-server = { path = "../jackett-server" }
+jackett-common = { path = "../jackett-common" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+tao = "0.32"
+tray-icon = "0.19"

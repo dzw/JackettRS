@@ -1,0 +1,16 @@
+[package]
+name = "jackett-service"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+jackett-server = { path = "../jackett-server" }
+jackett-common = { path = "../jackett-common" }
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
