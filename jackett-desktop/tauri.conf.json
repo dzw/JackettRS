@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "JackettRS",
+  "version": "0.1.0",
+  "identifier": "com.jackettrs.desktop",
+  "build": {
+    "frontendDist": "../jackett-server/wwwroot"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "resources": ["../Definitions/**/*"]
+  }
+}

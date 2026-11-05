@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::startup::{build_router, ServerState};
+use crate::startup::{build_router, ServerState, SharedState};
 use jackett_common::models::config::runtime_settings::RuntimeSettings;
 use jackett_common::services::cache_service::CacheService;
 use jackett_common::services::configuration_service::ConfigurationService;
@@ -53,6 +53,26 @@ pub async fn run_server(
 ) -> Result<()> {
     jackett_common::utils::logging_setup::LoggingSetup::setup(runtime_settings.tracing_enabled);
 
+    let (state, app) = build_app_state(runtime_settings, &server_options).await?;
+
+    let cfg = state.server_config.read().await;
+    let addr = format!("{}:{}", cfg.local_bind_address, cfg.port);
+    drop(cfg);
+    tracing::info!("Jackett (Rust) listening on http://{}", addr);
+
+    let listener = TcpListener::bind(&addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// Loads configuration, initialises all services and builds the shared
+/// application state plus router. Shared by `run_server` (binds the configured
+/// port) and the Tauri desktop shell (binds an ephemeral port so the WebView
+/// can navigate to the actual local URL).
+pub async fn build_app_state(
+    runtime_settings: RuntimeSettings,
+    server_options: &RuntimeServerConfig,
+) -> Result<(SharedState, axum::Router)> {
     let configuration_service = ConfigurationService::new(runtime_settings.clone());
     let mut server_config = configuration_service.load()?;
     server_config.on_deserialized();
@@ -65,11 +85,8 @@ pub async fn run_server(
         server_config.local_bind_address = bind;
     }
 
-    let port = server_config.port as u16;
-    let bind_address = server_config.local_bind_address.clone();
-
     let mut indexer_manager = IndexerManagerService::new();
-    let definitions_dir = resolve_definitions_dir(&server_options);
+    let definitions_dir = resolve_definitions_dir(server_options);
     let cfg_dir = resolve_indexer_config_dir(&runtime_settings);
     match indexer_manager.init(&definitions_dir, &cfg_dir) {
         Ok(n) => tracing::info!("Loaded {n} indexers from {:?}", definitions_dir),
@@ -103,7 +120,7 @@ pub async fn run_server(
         }
     }
 
-    let state = Arc::new(ServerState {
+    let state: SharedState = Arc::new(ServerState {
         server_config: RwLock::new(server_config),
         runtime_settings,
         configuration_service,
@@ -113,11 +130,6 @@ pub async fn run_server(
         indexer_config_dir: cfg_dir,
     });
 
-    let app = build_router(state);
-    let addr = format!("{}:{}", bind_address, port);
-    tracing::info!("Jackett (Rust) listening on http://{}", addr);
-
-    let listener = TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
-    Ok(())
+    let app = build_router(state.clone());
+    Ok((state, app))
 }

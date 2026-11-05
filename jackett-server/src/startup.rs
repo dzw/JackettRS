@@ -122,6 +122,11 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v2.0/indexers/:indexer_id/results/manualsearch",
             get(crate::results::manualsearch),
         )
+        // Aggregate variant for the virtual "all" indexer (desktop shell).
+        .route(
+            "/api/v2.0/indexers/all/results/manualsearch",
+            get(crate::results::manualsearch_all),
+        )
         // Mirror of `IndexerApiController.Test` (the #jackett-test-all target).
         .route(
             "/api/v2.0/indexers/:indexer_id/Test",

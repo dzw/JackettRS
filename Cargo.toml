@@ -6,6 +6,7 @@ members = [
     "jackett-service",
     "jackett-tray",
     "jackett-updater",
+    "jackett-desktop",
 ]
 
 [workspace.package]

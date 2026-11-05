@@ -172,12 +172,22 @@ function dlHref(row) {
 
 // Results stream in per indexer: each settled request appends its rows and
 // re-sorts, so the table fills up as responses arrive (like the C# UI).
+// The special "all" target uses the server-side aggregate endpoint, which
+// needs no per-indexer configuration (covers every public tracker) — the
+// desktop shell relies on it for out-of-the-box searching.
 async function doSearch() {
   const q = query.value.trim();
   const c = cat.value.trim();
-  const ids = trackerId.value
-    ? [trackerId.value]
-    : searchTargets.value.filter((i) => i.configured !== false).map((i) => i.id);
+  const configuredIds = searchTargets.value
+    .filter((i) => i.configured !== false)
+    .map((i) => i.id);
+  const ids = trackerId.value === "all"
+    ? ["all"]
+    : trackerId.value
+      ? [trackerId.value]
+      : configuredIds.length
+        ? configuredIds
+        : ["all"]; // no configured indexers → fall back to the aggregate
   if (!ids.length) {
     statusMsg.value = "没有可用的索引器。请先在 Add Indexer 中添加。";
     statusErr.value = true;
@@ -242,7 +252,8 @@ async function doSearch() {
       <form @submit.prevent="doSearch">
         <input id="query" v-model="query" placeholder="Query" />
         <select id="filter" v-model="trackerId">
-          <option value="">all</option>
+          <option value="all">all（聚合全部公开源，无需配置）</option>
+          <option value="">all（已配置索引器）</option>
           <option v-for="i in searchTargets" :key="i.id" :value="i.id">
             {{ i.name || i.id }}
           </option>

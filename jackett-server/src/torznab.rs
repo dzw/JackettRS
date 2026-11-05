@@ -121,6 +121,64 @@ pub(crate) async fn run_search_rss(
     }
 }
 
+/// One configured indexer's result of an aggregate fan-out.
+pub(crate) struct AggregateIndexerResult {
+    pub id: String,
+    pub name: String,
+    pub releases: Vec<ReleaseInfo>,
+}
+
+/// Fans a search out across every configured indexer concurrently (45s
+/// per-indexer timeout), keeping per-indexer attribution. Shared by the
+/// Torznab "all" endpoint and the aggregate manual search endpoint.
+pub(crate) async fn aggregate_releases(
+    state: &SharedState,
+    query: TorznabQuery,
+) -> Vec<AggregateIndexerResult> {
+    const PER_INDEXER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
+    let ids: Vec<String> = {
+        let manager = state.indexer_manager.read().await;
+        manager
+            .get_all_indexers()
+            .iter()
+            .filter(|i| i.is_configured())
+            .map(|i| i.id().to_string())
+            .collect()
+    };
+
+    let mut set = tokio::task::JoinSet::new();
+    for id in ids {
+        let st = state.clone();
+        let q = query.clone();
+        set.spawn(async move {
+            let fut = async {
+                let manager = st.indexer_manager.read().await;
+                match manager.get_indexer(&id) {
+                    Some(indexer) => {
+                        let name = indexer.name().to_string();
+                        let releases = indexer.query(&q).await.unwrap_or_default();
+                        Some((name, releases))
+                    }
+                    None => None,
+                }
+            };
+            match tokio::time::timeout(PER_INDEXER_TIMEOUT, fut).await {
+                Ok(Some((name, releases))) => AggregateIndexerResult { id, name, releases },
+                _ => AggregateIndexerResult { name: id.clone(), id, releases: Vec::new() },
+            }
+        });
+    }
+
+    let mut out: Vec<AggregateIndexerResult> = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(res) = joined {
+            out.push(res);
+        }
+    }
+    out
+}
+
 /// Mirror of the C# virtual "all" indexer: fans a search out across every
 /// configured indexer concurrently, merges the releases (sorted by seeders)
 /// and renders one Torznab RSS document. Per-indexer results time out so a
@@ -185,41 +243,10 @@ async fn aggregate_search(state: &SharedState, params: &HashMap<String, String>)
     }
 
     // Targets under a short read lock, then fan out without holding it.
-    let ids: Vec<String> = {
-        let manager = state.indexer_manager.read().await;
-        manager
-            .get_all_indexers()
-            .iter()
-            .filter(|i| i.is_configured())
-            .map(|i| i.id().to_string())
-            .collect()
-    };
-
-    let mut set = tokio::task::JoinSet::new();
-    let base_query = build_query(&t, params);
-    for id in ids {
-        let st = state.clone();
-        let q = base_query.clone();
-        set.spawn(async move {
-            let fut = async {
-                let manager = st.indexer_manager.read().await;
-                match manager.get_indexer(&id) {
-                    Some(indexer) => indexer.query(&q).await.unwrap_or_default(),
-                    None => Vec::new(),
-                }
-            };
-            match tokio::time::timeout(PER_INDEXER_TIMEOUT, fut).await {
-                Ok(releases) => releases,
-                Err(_) => Vec::new(),
-            }
-        });
-    }
-
+    let per = aggregate_releases(state, build_query(&t, params)).await;
     let mut releases: Vec<ReleaseInfo> = Vec::new();
-    while let Some(joined) = set.join_next().await {
-        if let Ok(per_indexer) = joined {
-            releases.extend(per_indexer);
-        }
+    for r in &per {
+        releases.extend(r.releases.clone());
     }
     releases.sort_by(|a, b| b.seeders.unwrap_or(0).cmp(&a.seeders.unwrap_or(0)));
 

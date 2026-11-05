@@ -18,7 +18,7 @@ use jackett_common::models::dto::torrent_potato_response_item::TorrentPotatoResp
 use jackett_common::models::tracker_cache_result::TrackerCacheResult;
 
 use crate::startup::SharedState;
-use crate::torznab::{build_query, check_api_key, json_response, run_search_rss};
+use crate::torznab::{aggregate_releases, build_query, check_api_key, json_response, run_search_rss};
 
 /// GET /api/v2.0/indexers/{indexer_id}/results
 /// Mirror of `ResultsController.Results` — same as a Torznab `t=search` but on
@@ -182,5 +182,58 @@ pub async fn manualsearch(
     json_response(&ManualSearchResult {
         results,
         indexers: vec![indexer_result],
+    })
+}
+
+/// GET /api/v2.0/indexers/all/results/manualsearch — aggregate variant over
+/// every configured indexer. The desktop shell relies on this so that public
+/// trackers are searchable without any per-indexer configuration.
+pub async fn manualsearch_all(
+    State(state): State<SharedState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    if let Err(r) = check_api_key(&state, &params).await {
+        return r;
+    }
+    let mut query = build_query("search", &params);
+    query.interactive_search = true;
+    let start = Instant::now();
+
+    let per = aggregate_releases(&state, query.clone()).await;
+    let mut results: Vec<TrackerCacheResult> = Vec::new();
+    let mut indexer_results: Vec<ManualSearchResultIndexer> = Vec::new();
+
+    for a in per {
+        if !a.releases.is_empty() {
+            state.cache_service.cache_result(&a.id, &query, &a.releases);
+        }
+        results.extend(a.releases.iter().map(|release| TrackerCacheResult {
+            release: release.clone(),
+            first_seen: None,
+            tracker: Some(a.name.clone()),
+            tracker_id: Some(a.id.clone()),
+            tracker_type: None,
+            category_desc: None,
+            blackhole_link: None,
+        }));
+        indexer_results.push(ManualSearchResultIndexer {
+            id: Some(a.id.clone()),
+            name: Some(a.name.clone()),
+            status: ManualSearchResultIndexerStatus::OK,
+            results: a.releases.len() as i32,
+            error: None,
+            elapsed_time: 0,
+        });
+    }
+
+    tracing::info!(
+        "aggregate manualsearch: {} indexers, {} results in {}ms",
+        indexer_results.len(),
+        results.len(),
+        start.elapsed().as_millis()
+    );
+    json_response(&ManualSearchResult {
+        results,
+        indexers: indexer_results,
     })
 }
