@@ -10,7 +10,7 @@ fn repo_definitions() -> std::path::PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("src/Jackett.Common/Definitions")
+        .join("Definitions")
 }
 
 /// Parses every shipped definition and validates structure.

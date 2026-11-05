@@ -1,0 +1,103 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Deployment target: the ARM64 Armbian box (192.168.125.143).
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cross: false
+          # Local development / Windows service builds.
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cross: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: jackett-frontend/package-lock.json
+
+      # The Vue UI is compiled first: jackett-server embeds wwwroot/index.html
+      # via include_str!, so it must exist before cargo runs.
+      - name: Build frontend
+        working-directory: jackett-frontend
+        run: |
+          npm ci
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+          key: ${{ matrix.target }}
+
+      - name: Install aarch64 cross linker
+        if: matrix.cross
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+
+      - name: Build server
+        run: cargo build --release --target ${{ matrix.target }} -p jackett-server
+
+      - name: Run tests (linux)
+        if: runner.os == 'Linux'
+        run: cargo test -p jackett-common --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          EXT=""
+          case "${{ matrix.target }}" in *windows*) EXT=".exe";; esac
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/jackett-server$EXT" dist/
+          cp -r Definitions dist/Definitions
+          cp run.sh dist/ 2>/dev/null || true
+          cp run.bat build_front_end.bat dist/ 2>/dev/null || true
+          tar -czf "jackett-server-${{ matrix.target }}.tar.gz" -C dist .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jackett-server-${{ matrix.target }}
+          path: jackett-server-*.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/jackett-server-*.tar.gz
+          generate_release_notes: true

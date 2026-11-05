@@ -15,7 +15,7 @@ use jackett_common::indexers::cardigann::engine::{CardigannConfig, CardigannInde
 
 #[test]
 fn parse_all_csharp_definitions() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../src/Jackett.Common/Definitions");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Definitions");
     let entries: Vec<_> = std::fs::read_dir(&dir)
         .expect("C# Definitions folder not found; run from the Jackett repo checkout")
         .filter_map(|e| e.ok())
