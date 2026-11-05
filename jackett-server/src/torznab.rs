@@ -142,6 +142,37 @@ async fn aggregate_search(state: &SharedState, params: &HashMap<String, String>)
 <searching><search available=\"yes\" supportedParams=\"q\" /></searching></caps>";
         return xml_response(StatusCode::OK, xml);
     }
+    if t == "indexers" {
+        // Torznab indexer listing: qBittorrent's jackett plugin enumerates the
+        // configured indexers here (findall('indexer') + attrib['id']).
+        let ids: Vec<String> = {
+            let manager = state.indexer_manager.read().await;
+            manager
+                .get_all_indexers()
+                .iter()
+                .filter(|i| i.is_configured())
+                .map(|i| i.id().to_string())
+                .collect()
+        };
+        let manager = state.indexer_manager.read().await;
+        let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?><indexers>");
+        for id in ids {
+            let name = manager
+                .get_indexer(&id)
+                .map(|i| i.name().to_string())
+                .unwrap_or_else(|| id.clone());
+            let escaped = name
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;");
+            xml.push_str(&format!(
+                "<indexer id=\"{}\" configured=\"true\"><title>{}</title></indexer>",
+                id, escaped
+            ));
+        }
+        xml.push_str("</indexers>");
+        return xml_response(StatusCode::OK, &xml);
+    }
     if !matches!(
         t.as_str(),
         "search" | "tvsearch" | "movie" | "music" | "book" | "TorrentPotato"
