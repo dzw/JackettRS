@@ -64,8 +64,8 @@ jobs:
       - name: Build server
         run: cargo build --release --target ${{ matrix.target }} -p jackett-server
 
-      - name: Run tests (linux)
-        if: runner.os == 'Linux'
+      - name: Run tests (native linux only — cross-built test binaries cannot run)
+        if: matrix.cross == false && runner.os == 'Linux'
         run: cargo test -p jackett-common --target ${{ matrix.target }}
 
       - name: Package
