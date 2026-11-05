@@ -15,9 +15,9 @@ use jackett_common::indexers::cardigann::engine::{CardigannConfig, CardigannInde
 
 #[test]
 fn parse_all_csharp_definitions() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../Definitions");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../Definitions");
     let entries: Vec<_> = std::fs::read_dir(&dir)
-        .expect("C# Definitions folder not found; run from the Jackett repo checkout")
+        .expect("Definitions folder not found; expected at the repository root")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("yml"))

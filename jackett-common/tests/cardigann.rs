@@ -1,13 +1,11 @@
 //! Integration tests for the Cardigann engine using the real YAML definitions
-//! shipped in `src/Jackett.Common/Definitions/`.
+//! shipped in `Definitions/` at the repository root.
 
 use jackett_common::indexers::cardigann::{parse_definition, template};
 use jackett_common::models::torznab_query::TorznabQuery;
 
 fn repo_definitions() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
         .parent()
         .unwrap()
         .join("Definitions")
