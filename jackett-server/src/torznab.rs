@@ -1,6 +1,6 @@
 //! Mirror of Jackett.Server/Controllers/TorznabController.cs (the public Torznab
-//! API surface). Handles `t=caps`, the various search modes and `t=download`.
-//! Aggregate endpoints (`/api/v2.0/torznab/api`) are added later.
+//! API surface). Handles `t=caps`, the various search modes, `t=download` and
+//! the virtual "all" aggregate indexer used by qBittorrent's jackett plugin.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 
 use jackett_common::indexers::i_indexer::IIndexer;
 use jackett_common::models::channel_info::ChannelInfo;
+use jackett_common::models::release_info::ReleaseInfo;
 use jackett_common::models::result_page::ResultPage;
 use jackett_common::models::torznab_query::TorznabQuery;
 
@@ -26,6 +27,13 @@ pub async fn torznab_api(
 ) -> Response {
     if let Err(resp) = check_api_key(&state, &params).await {
         return resp;
+    }
+
+    // Virtual "all" indexer: fan the search out across every configured
+    // indexer and merge the results (qBittorrent's jackett plugin searches
+    // /indexers/all/results/torznab/api).
+    if indexer_id == "all" {
+        return aggregate_search(&state, &params).await;
     }
 
     let manager = state.indexer_manager.read().await;
@@ -111,6 +119,99 @@ pub(crate) async fn run_search_rss(
         )
             .into_response(),
     }
+}
+
+/// Mirror of the C# virtual "all" indexer: fans a search out across every
+/// configured indexer concurrently, merges the releases (sorted by seeders)
+/// and renders one Torznab RSS document. Per-indexer results time out so a
+/// slow or hung tracker cannot stall the aggregate response.
+async fn aggregate_search(state: &SharedState, params: &HashMap<String, String>) -> Response {
+    const PER_INDEXER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+
+    let t = params
+        .get("t")
+        .map(|s| s.as_str())
+        .unwrap_or("search")
+        .to_string();
+
+    if t == "caps" {
+        // Minimal capabilities document — clients searching "all" never need
+        // the per-tracker category trees.
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
+<caps><server title=\"Jackett\" /><limits default=\"100\" max=\"100\" />\
+<searching><search available=\"yes\" supportedParams=\"q\" /></searching></caps>";
+        return xml_response(StatusCode::OK, xml);
+    }
+    if !matches!(
+        t.as_str(),
+        "search" | "tvsearch" | "movie" | "music" | "book" | "TorrentPotato"
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("Unsupported torznab operation: t={}", t),
+        )
+            .into_response();
+    }
+
+    // Targets under a short read lock, then fan out without holding it.
+    let ids: Vec<String> = {
+        let manager = state.indexer_manager.read().await;
+        manager
+            .get_all_indexers()
+            .iter()
+            .filter(|i| i.is_configured())
+            .map(|i| i.id().to_string())
+            .collect()
+    };
+
+    let mut set = tokio::task::JoinSet::new();
+    let base_query = build_query(&t, params);
+    for id in ids {
+        let st = state.clone();
+        let q = base_query.clone();
+        set.spawn(async move {
+            let fut = async {
+                let manager = st.indexer_manager.read().await;
+                match manager.get_indexer(&id) {
+                    Some(indexer) => indexer.query(&q).await.unwrap_or_default(),
+                    None => Vec::new(),
+                }
+            };
+            match tokio::time::timeout(PER_INDEXER_TIMEOUT, fut).await {
+                Ok(releases) => releases,
+                Err(_) => Vec::new(),
+            }
+        });
+    }
+
+    let mut releases: Vec<ReleaseInfo> = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(per_indexer) = joined {
+            releases.extend(per_indexer);
+        }
+    }
+    releases.sort_by(|a, b| b.seeders.unwrap_or(0).cmp(&a.seeders.unwrap_or(0)));
+
+    let ci = ChannelInfo {
+        title: Some("Jackett (all)".to_string()),
+        description: Some("Aggregate search across all configured indexers".to_string()),
+        link: "http://localhost:9117".parse().ok(),
+        language: None,
+        category: Some(t),
+    };
+    let page = ResultPage {
+        channel_info: ci,
+        releases,
+    };
+    let cfg = state.server_config.read().await;
+    let port = cfg.port as u16;
+    let bind = cfg.local_bind_address.clone();
+    drop(cfg);
+    let self_url = format!("http://{}:{}/api/v2.0/torznab/all/api", bind, port);
+    let xml = page.to_xml(&self_url.parse().unwrap_or_else(|_| {
+        url::Url::parse("http://localhost/").unwrap()
+    }));
+    xml_response(StatusCode::OK, &xml)
 }
 
 /// GET /api/v2.0/torznab/{indexer_id}/download
