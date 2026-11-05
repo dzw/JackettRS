@@ -33,7 +33,106 @@ cargo build --release -p jackett-server
 运行时加载 `Definitions/`（可用环境变量 `JACKETT_DEFINITIONS_DIR` 指定）、
 数据目录可用 `-d <dir>`（serverconfig.json、索引器配置）。端口默认 9117。
 
-## 部署形态（参考：Armbian ARM64 盒子 + qBittorrent）
+## 部署（Linux / Armbian 实测流程）
 
-systemd 服务（`User=jackett`）+ qBittorrent Blackhole 模式：
-Jackett 的 `blackholedir` 指向 qB 的监视目录，UI 点下载 → 服务端转换磁力/种子落盘 → qB 自动加种。
+以 ARM64 盒子（Armbian, systemd, 专用 `jackett` 用户）为例，
+`v0.1.0` 起可直接使用 GitHub Release 的 `jackett-server-aarch64-unknown-linux-gnu.tar.gz`。
+
+### 1. 首次安装
+
+```bash
+# 目录与用户（用户已存在则跳过 useradd）
+sudo useradd -r -s /usr/sbin/nologin jackett 2>/dev/null || true
+sudo mkdir -p /opt/jackett-rust/Data
+
+# 下载并解压 Release 产物（内含二进制 + Definitions/ + 运行脚本）
+wget https://github.com/dzw/JackettRS/releases/latest/download/jackett-server-aarch64-unknown-linux-gnu.tar.gz -O /tmp/jackett.tar.gz
+sudo tar -xzf /tmp/jackett.tar.gz -C /opt/jackett-rust/
+sudo chmod +x /opt/jackett-rust/jackett-server
+sudo chown -R jackett:jackett /opt/jackett-rust
+```
+
+### 2. systemd 服务
+
+`/etc/systemd/system/jackett.service`：
+
+```ini
+[Unit]
+Description=Jackett Service (Rust)
+After=network.target
+
+[Service]
+Type=simple
+User=jackett
+Group=jackett
+WorkingDirectory=/opt/jackett-rust
+Environment=JACKETT_DEFINITIONS_DIR=/opt/jackett-rust/Definitions
+ExecStart=/opt/jackett-rust/jackett-server -d /opt/jackett-rust/Data
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now jackett
+curl -s http://127.0.0.1:9117/health   # 应返回 OK
+```
+
+### 3. 必要的初始配置
+
+服务首次启动会在 Data 目录生成配置；对外访问（局域网）需要改绑定并设置 API key：
+
+```bash
+# local_bind_address 默认 127.0.0.1，改为 0.0.0.0 供局域网访问
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"local_bind_address":"0.0.0.0","external":true}' \
+  "http://127.0.0.1:9117/api/v2.0/server/config"
+sudo systemctl restart jackett
+```
+
+API key 可通过 Web UI（`http://<主机>:9117` → Settings）查看/设置；
+需要兼容旧客户端时也可以 POST `{"api_key":"..."}` 沿用原 key。
+
+### 4. 接入 qBittorrent（Blackhole 自动加种，实测可用）
+
+原理：Jackett 的下载请求把 .torrent 二进制 / .magnet 文本写入监视目录，
+qBittorrent（4.5+，支持 .magnet）扫描后自动加种。
+
+```bash
+# 1) 建 watch 目录（放在下载盘上）
+sudo mkdir -p /mnt/data/watch/jackett && sudo chown jackett:jackett /mnt/data/watch/jackett
+
+# 2) qBittorrent 配置监视目录（WebUI：设置→下载→监视文件夹，
+#    或直接写 /root/.config/qBittorrent/watched_folders.json 后重启 qbittorrent-nox）
+
+# 3) Jackett 配置 blackhole 目录（Settings UI 或 API）
+curl -s -X POST -H "Content-Type: application/json" \
+  -d '{"blackholedir":"/mnt/data/watch/jackett"}' \
+  "http://127.0.0.1:9117/api/v2.0/server/config"
+```
+
+链路：Web UI / Torznab 客户端点下载 → 服务端转换磁力/种子 → 落盘 watch 目录 →
+qB 每 ~60 秒扫描自动加种。qBittorrent 的 nova3 Jackett 搜索插件也兼容
+（依赖虚拟 `all` 聚合索引器：`/api/v2.0/indexers/all/results/torznab/api`）。
+
+### 5. 升级
+
+```bash
+wget https://github.com/dzw/JackettRS/releases/latest/download/jackett-server-aarch64-unknown-linux-gnu.tar.gz -O /tmp/jackett.tar.gz
+sudo systemctl stop jackett
+sudo tar -xzf /tmp/jackett.tar.gz -C /opt/jackett-rust/
+sudo chmod +x /opt/jackett-rust/jackett-server && sudo chown -R jackett:jackett /opt/jackett-rust
+sudo systemctl start jackett
+```
+
+`Data/` 不在发布包内——索引器配置、API key、blackhole 设置升级后原样保留。
+若 `Definitions/` 有更新，随包覆盖即可（索引器配置在 Data/ 中，不受影响）。
+
+### 6. Windows（本地开发 / 服务）
+
+Release 的 `jackett-server-x86_64-pc-windows-msvc.tar.gz` 解压后直接运行；
+`jackett-service` / `jackett-tray`（Windows 服务与托盘）按需用 `cargo build --release -p jackett-service -p jackett-tray` 构建。
