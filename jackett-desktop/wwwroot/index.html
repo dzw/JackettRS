@@ -19,10 +19,12 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden}
 body{
   font:12px "Microsoft YaHei","Segoe UI",Tahoma,Arial,sans-serif;
   color:var(--ink);
-  display:flex;flex-direction:column;
+  display:flex;flex-direction:row;
   background:#fff;
   user-select:none;
 }
+/* Left stack (header + results + status); the QR rail sits to its right. */
+.app-col{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0}
 button,input{font-family:inherit;font-size:12px}
 input[type="checkbox"]{accent-color:var(--blue-dark);margin:0;vertical-align:middle}
 
@@ -290,6 +292,7 @@ td.c-check{text-align:center;padding:0}
 </head>
 <body>
 
+<div class="app-col">
 <header class="head">
   <div class="title-line">
     <span class="logo">P</span>
@@ -378,10 +381,6 @@ td.c-check{text-align:center;padding:0}
   </div>
 </div>
   </div>
-  <aside class="sidebar">
-    <div class="side-title">扫码关注</div>
-    <div id="qrList"></div>
-  </aside>
 </div>
 
 <footer class="status">
@@ -391,6 +390,11 @@ td.c-check{text-align:center;padding:0}
   <span id="statusRight"></span>
   <span id="portLabel" class="port-label"></span>
 </footer>
+  </div>
+  <aside class="sidebar">
+    <div class="side-title">扫码关注</div>
+    <div id="qrList"></div>
+  </aside>
 
 <div id="ctxMenu" class="menu ctx hidden">
   <div class="cap" id="ctxTitle"></div>
