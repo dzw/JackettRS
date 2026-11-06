@@ -209,6 +209,57 @@ td.c-check{text-align:center;padding:0}
   font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:50;
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- 设置按钮 / 设置弹窗 ---------- */
+.title-btn{
+  height:18px;padding:0 9px;cursor:pointer;color:#fff;font-size:11px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.5);
+  border-radius:3px;line-height:16px;
+}
+.title-btn:hover{background:rgba(255,255,255,.28)}
+.mask{
+  position:fixed;inset:0;z-index:40;background:rgba(18,42,70,.35);
+  display:flex;align-items:center;justify-content:center;
+}
+.mask.hidden{display:none}
+.dialog{
+  width:430px;background:#fff;border:1px solid #8db0d8;border-radius:4px;
+  box-shadow:0 10px 30px rgba(20,50,90,.35);overflow:hidden;
+}
+.dlg-title{
+  height:30px;display:flex;align-items:center;padding:0 10px;color:#fff;
+  font-size:12px;font-weight:bold;background:linear-gradient(180deg,#4b9fe6,#2d79c6);
+}
+.dlg-title>span:first-child{flex:1}
+.dlg-close{flex:none;cursor:pointer;font-size:16px;line-height:16px;font-weight:normal;opacity:.9}
+.dlg-close:hover{opacity:1}
+.dlg-body{padding:14px 16px 6px}
+.group-title{
+  font-size:12px;font-weight:bold;color:#1b4d86;
+  border-bottom:1px solid #dbe6f2;padding-bottom:5px;margin-bottom:10px;
+}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:12px}
+.row>span{width:62px;flex:none;color:#33465a}
+.row input[type=text],.row input[type=number],.row input[type=password],.row select{
+  flex:1;height:24px;padding:0 6px;border:1px solid #a8c1dc;border-radius:2px;
+  outline:none;color:#26405c;background:#fff;min-width:0;
+}
+.row input[type=text]:focus,.row input[type=number]:focus,.row input[type=password]:focus,.row select:focus{
+  border-color:#3b8cd6;box-shadow:0 0 0 2px rgba(59,140,214,.18);
+}
+.row input:disabled,.row select:disabled{background:#f1f4f8;color:#9aa8b8}
+.row.chk{margin-bottom:12px;cursor:pointer}
+.row.chk input[type=checkbox]{flex:none;width:13px;height:13px;margin:0}
+.hint{font-size:11px;color:#8494a6;line-height:1.7;margin:12px 0 4px}
+.dlg-foot{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#f4f8fd;border-top:1px solid #dbe6f2}
+#pxMsg{flex:1;font-size:11px;color:#b05a2c}
+.dlg-btn{
+  height:25px;padding:0 16px;cursor:pointer;color:#1a4b83;
+  background:linear-gradient(180deg,#fff,#dfeafa);border:1px solid #8fb4dc;border-radius:3px;
+}
+.dlg-btn:hover{background:#fff}
+.dlg-btn.primary{font-weight:bold}
+.dlg-btn:disabled{opacity:.55;cursor:default}
 </style>
 </head>
 <body>
@@ -220,6 +271,7 @@ td.c-check{text-align:center;padding:0}
     <span class="app-ver">JackettRS Desktop · 公共源直搜</span>
     <span class="title-spacer"></span>
     <span class="conn" id="conn"><i></i><span id="connText">服务器正在连接...</span></span>
+    <button id="btnSettings" class="title-btn" title="设置">设置</button>
   </div>
   <div class="search-line">
     <input id="q" type="text" placeholder="搜索你想要的任何资源！" autocomplete="off" spellcheck="false">
@@ -305,7 +357,31 @@ td.c-check{text-align:center;padding:0}
 <div id="ctxMenu" class="menu ctx hidden">
   <div class="cap" id="ctxTitle"></div>
   <hr>
+  <div data-act="copyname">复制名称</div>
   <div data-act="copylink">复制链接</div>
+</div>
+
+<div id="settingsMask" class="mask hidden">
+  <div class="dialog">
+    <div class="dlg-title"><span>设置</span><span class="dlg-close" id="btnSettingsClose">&times;</span></div>
+    <div class="dlg-body">
+      <div class="group-title">代理服务器</div>
+      <label class="row chk"><input type="checkbox" id="pxEnabled"> 启用代理服务器</label>
+      <div class="row"><span>类型</span>
+        <select id="pxType"><option value="http">HTTP</option></select>
+      </div>
+      <div class="row"><span>地址</span><input id="pxUrl" type="text" placeholder="127.0.0.1" autocomplete="off" spellcheck="false"></div>
+      <div class="row"><span>端口</span><input id="pxPort" type="number" min="1" max="65535" placeholder="7890"></div>
+      <div class="row"><span>用户名</span><input id="pxUser" type="text" placeholder="可选" autocomplete="off"></div>
+      <div class="row"><span>密码</span><input id="pxPass" type="password" placeholder="可选" autocomplete="off"></div>
+      <p class="hint">保存后立即生效（会重新加载索引器）。当前支持 HTTP 代理，例如 Clash / V2Ray 的 HTTP 混合端口；留空用户名密码表示匿名代理。</p>
+    </div>
+    <div class="dlg-foot">
+      <span id="pxMsg"></span>
+      <button id="btnSettingsCancel" class="dlg-btn">取消</button>
+      <button id="btnSettingsSave" class="dlg-btn primary">保存</button>
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -628,6 +704,17 @@ td.c-check{text-align:center;padding:0}
     return visible().filter((g) => set.has(g.key));
   }
 
+  async function copyToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (_) {}
+      document.body.removeChild(ta);
+    }
+  }
+
   async function copyLinks(groups) {
     const lines = [];
     for (const g of groups) {
@@ -637,16 +724,15 @@ td.c-check{text-align:center;padding:0}
       }
     }
     if (!lines.length) { toast("没有可复制的链接"); return; }
-    const text = lines.join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (_) {
-      const ta = document.createElement("textarea");
-      ta.value = text; document.body.appendChild(ta); ta.select();
-      try { document.execCommand("copy"); } catch (_) {}
-      document.body.removeChild(ta);
-    }
+    await copyToClipboard(lines.join("\n"));
     toast("已复制 " + lines.length + " 条链接到剪贴板");
+  }
+
+  async function copyName(g) {
+    const title = g && g.title;
+    if (!title) { toast("没有可复制的名称"); return; }
+    await copyToClipboard(title);
+    toast("已复制名称到剪贴板");
   }
 
   function copySelected() { return copyLinks(selectedGroups()); }
@@ -680,6 +766,74 @@ td.c-check{text-align:center;padding:0}
     const opening = $(menu).classList.contains("hidden");
     closeMenus();
     if (opening) $(menu).classList.remove("hidden");
+  }
+
+  /* ---------------- settings: proxy server ---------------- */
+  function syncProxyFields() {
+    const on = $("pxEnabled").checked;
+    for (const id of ["pxType", "pxUrl", "pxPort", "pxUser", "pxPass"]) {
+      $(id).disabled = !on;
+    }
+  }
+
+  function closeSettings() {
+    $("settingsMask").classList.add("hidden");
+  }
+
+  async function openSettings() {
+    closeMenus();
+    $("pxMsg").textContent = "";
+    $("btnSettingsSave").disabled = true;
+    $("settingsMask").classList.remove("hidden");
+    try {
+      const r = await fetch("/desktop/settings");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const d = await r.json();
+      $("pxEnabled").checked = !!d.enabled;
+      $("pxType").value = d.type || "http";
+      $("pxUrl").value = d.url || "";
+      $("pxPort").value = d.port || "";
+      $("pxUser").value = d.username || "";
+      $("pxPass").value = d.password || "";
+      syncProxyFields();
+      $("btnSettingsSave").disabled = false;
+    } catch (e) {
+      $("pxMsg").textContent = "读取设置失败：" + e.message;
+    }
+  }
+
+  async function saveSettings() {
+    const body = {
+      enabled: $("pxEnabled").checked,
+      type: $("pxType").value,
+      url: $("pxUrl").value.trim(),
+      port: $("pxPort").value ? parseInt($("pxPort").value, 10) : null,
+      username: $("pxUser").value.trim(),
+      password: $("pxPass").value
+    };
+    if (body.enabled && !body.url) { $("pxMsg").textContent = "请填写代理地址"; return; }
+    const btn = $("btnSettingsSave");
+    btn.disabled = true;
+    $("pxMsg").textContent = "正在保存并重新加载索引器…";
+    try {
+      const r = await fetch("/desktop/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error(d.error || ("HTTP " + r.status));
+      closeSettings();
+      toast("代理设置已保存并生效");
+      // The server rebuilt every indexer; refresh the public-source count.
+      const list = await fetch("/desktop/indexers").then((x) => x.json());
+      st.indexers = list.indexers || [];
+      setConn("已连接 " + st.indexers.length + " 个公共索引器", "ok");
+      render();
+    } catch (e) {
+      $("pxMsg").textContent = "保存失败：" + e.message;
+      btn.disabled = false;
+    }
   }
 
   renderTabs();
@@ -783,6 +937,7 @@ td.c-check{text-align:center;padding:0}
     if (!act) return;
     closeMenus();
     const g = ctxKey && st.map.get(ctxKey);
+    if (act === "copyname" && g) copyName(g);
     if (act === "copylink" && g) copyLinks([g]);
   });
 
@@ -796,6 +951,15 @@ td.c-check{text-align:center;padding:0}
     if (act === "selectall") selectVisible(true);
     if (act === "clearsel") { st.selected.clear(); render(); }
   });
+  $("btnSettings").addEventListener("click", openSettings);
+  $("pxEnabled").addEventListener("change", syncProxyFields);
+  $("btnSettingsClose").addEventListener("click", closeSettings);
+  $("btnSettingsCancel").addEventListener("click", closeSettings);
+  $("btnSettingsSave").addEventListener("click", saveSettings);
+  $("settingsMask").addEventListener("click", (e) => {
+    if (e.target === $("settingsMask")) closeSettings();
+  });
+
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".split")) closeMenus();
   });
@@ -804,7 +968,11 @@ td.c-check{text-align:center;padding:0}
   });
   $("grid").addEventListener("scroll", closeMenus);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { closeMenus(); if (st.searching) stopSearch(); }
+    if (e.key === "Escape") {
+      if (!$("settingsMask").classList.contains("hidden")) { closeSettings(); return; }
+      closeMenus();
+      if (st.searching) stopSearch();
+    }
   });
 
   /* ---------------- boot ---------------- */

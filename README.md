@@ -40,11 +40,16 @@ cargo build --release -p jackett-server
 run_desk.bat          # 或 cargo run -p jackett-desktop
 ```
 
-桌面版与 Web 管理界面完全分离：没有 Add Indexer、Configured Indexers 或任何配置页，
+桌面版与 Web 管理界面完全分离：没有 Add Indexer、Configured Indexers 等索引器配置界面，
 启动后直接并发搜索 `Definitions/` 里全部 Public 类型索引器（当前 89 个），无需配置。
 页面在桌面壳内以 `include_str!` 编译并通过 `/desktop` 提供；搜索走 `/desktop/stream`
 （服务端并发 + SSE 边搜边出结果），下载交给 `/desktop/download` 由系统默认 BT 客户端打开磁力/种子。
 `/desktop?q=关键词` 可在打开时直接开始搜索。
+
+右上角的「设置」目前提供 HTTP 代理服务器的配置（启用开关、地址、端口、用户名、密码）。
+设置经 `/desktop/settings` 保存到数据目录的 `serverconfig.json`；保存后服务端会重新加载
+所有索引器，让新的 `reqwest` 客户端立即使用代理，无需重启程序。当前构建仅支持 HTTP 代理
+（`reqwest` 未开启 socks 特性）。
 
 ## 部署（Linux / Armbian 实测流程）
 

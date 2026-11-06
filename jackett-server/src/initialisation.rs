@@ -1,9 +1,10 @@
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::startup::{build_router, ServerState, SharedState};
 use jackett_common::models::config::runtime_settings::RuntimeSettings;
+use jackett_common::models::config::server_config::ServerConfig;
 use jackett_common::services::cache_service::CacheService;
 use jackett_common::services::configuration_service::ConfigurationService;
 use crate::startup::resolve_indexer_config_dir;
@@ -43,6 +44,90 @@ fn resolve_definitions_dir(opts: &RuntimeServerConfig) -> PathBuf {
         }
     }
     PathBuf::from("Definitions")
+}
+
+/// Proxy keys reqwest reads when constructing a client.
+const PROXY_ENV_KEYS: [&str; 6] = [
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "all_proxy",
+];
+
+/// Remembers the environment as it was before JackettRS touched it, so a
+/// headless/service install that relies on a system-wide HTTP_PROXY keeps
+/// working when no proxy is configured in serverconfig.json.
+static ORIGINAL_PROXY_ENV: std::sync::OnceLock<Vec<(&'static str, Option<String>)>> =
+    std::sync::OnceLock::new();
+
+/// Applies the persisted proxy to the process environment. reqwest's default
+/// client builder reads HTTP_PROXY / ALL_PROXY at construction time, so this
+/// must run before any indexer (and its HTTP client) is created.
+pub fn apply_proxy_env(config: &ServerConfig) {
+    let original = ORIGINAL_PROXY_ENV.get_or_init(|| {
+        PROXY_ENV_KEYS
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect()
+    });
+    match config.get_proxy_url(true) {
+        Some(url) => {
+            for key in PROXY_ENV_KEYS {
+                std::env::set_var(key, &url);
+            }
+            if let Some(public_url) = config.get_proxy_url(false) {
+                tracing::info!("proxy enabled: {public_url}");
+            }
+        }
+        None => {
+            // Restore rather than clear: disabling our proxy must not silently
+            // remove a proxy configured by the OS / container environment.
+            for (key, value) in original {
+                match value {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+}
+
+/// Loads all Cardigann definitions and restores user-configured indexers.
+/// Shared by startup and the desktop settings endpoint: changing the proxy
+/// requires rebuilding every indexer so their reqwest clients pick it up.
+pub fn build_indexer_manager(
+    definitions_dir: &Path,
+    config_dir: &Path,
+) -> IndexerManagerService {
+    let mut manager = IndexerManagerService::new();
+    match manager.init(definitions_dir, config_dir) {
+        Ok(n) => tracing::info!("Loaded {n} indexers from {:?}", definitions_dir),
+        Err(e) => tracing::error!("Failed to load indexers: {e:#}"),
+    }
+
+    // Hand-coded indexers rebuild through the bespoke registry; Cardigann
+    // definitions rebuild from their YAML with the persisted settings.
+    if let Ok(entries) = std::fs::read_dir(config_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                match parse_indexer_config(&path, &text) {
+                    Some((id, fields)) => {
+                        if let Some(idx) = registry::build_indexer(&id, &fields) {
+                            manager.add_indexer(idx);
+                        } else if manager.rebuild_cardigann(&id, &fields) {
+                            // rebuilt from its Cardigann definition
+                        } else {
+                            tracing::warn!("skipping persisted indexer {}: build failed", id);
+                        }
+                    }
+                    None => tracing::warn!("skip {}: unrecognized config format", path.display()),
+                }
+            }
+        }
+    }
+    manager
 }
 
 /// Mirror of Jackett.Server/Initialisation.cs + Program.cs:
@@ -85,40 +170,13 @@ pub async fn build_app_state(
         server_config.local_bind_address = bind;
     }
 
-    let mut indexer_manager = IndexerManagerService::new();
+    // reqwest reads the proxy environment when a Client is *constructed*, so
+    // the persisted proxy must be applied before any indexer is built.
+    apply_proxy_env(&server_config);
+
     let definitions_dir = resolve_definitions_dir(server_options);
     let cfg_dir = resolve_indexer_config_dir(&runtime_settings);
-    match indexer_manager.init(&definitions_dir, &cfg_dir) {
-        Ok(n) => tracing::info!("Loaded {n} indexers from {:?}", definitions_dir),
-        Err(e) => tracing::error!("Failed to load indexers: {e:#}"),
-    }
-
-    // Restore user-added indexers persisted via the UI/API (mirror of C#'s
-    // per-indexer config restore on startup). Hand-coded indexers rebuild
-    // through the bespoke registry; Cardigann definitions rebuild from their
-    // YAML with the persisted settings.
-    if let Ok(entries) = std::fs::read_dir(&cfg_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                match parse_indexer_config(&path, &text) {
-                    Some((id, fields)) => {
-                        if let Some(idx) = registry::build_indexer(&id, &fields) {
-                            indexer_manager.add_indexer(idx);
-                        } else if indexer_manager.rebuild_cardigann(&id, &fields) {
-                            // rebuilt from its Cardigann definition
-                        } else {
-                            tracing::warn!("skipping persisted indexer {}: build failed", id);
-                        }
-                    }
-                    None => tracing::warn!("skip {}: unrecognized config format", path.display()),
-                }
-            }
-        }
-    }
+    let indexer_manager = build_indexer_manager(&definitions_dir, &cfg_dir);
 
     let state: SharedState = Arc::new(ServerState {
         server_config: RwLock::new(server_config),
@@ -127,7 +185,8 @@ pub async fn build_app_state(
         indexer_manager: RwLock::new(indexer_manager),
         cache_service: CacheService::new(),
         log_cache_service: LogCacheService::new(1000),
-        indexer_config_dir: cfg_dir,
+        indexer_config_dir: cfg_dir.clone(),
+        definitions_dir,
     });
 
     let app = build_router(state.clone());

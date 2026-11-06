@@ -37,6 +37,9 @@ pub struct ServerState {
     /// or the `JACKETT_DATA` override, then shared so every handler writes to the
     /// same place the manager loaded from.
     pub indexer_config_dir: PathBuf,
+    /// Folder holding the Cardigann YAML definitions. Kept so the desktop
+    /// settings endpoint can rebuild all indexers when the proxy changes.
+    pub definitions_dir: PathBuf,
 }
 
 pub type SharedState = Arc<ServerState>;
@@ -135,6 +138,10 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/desktop/search", get(crate::results::desktop_search))
         .route("/desktop/download", get(crate::results::desktop_download))
         .route("/desktop/open", get(crate::results::desktop_open))
+        .route(
+            "/desktop/settings",
+            get(crate::results::desktop_settings_get).post(crate::results::desktop_settings_save),
+        )
         // Mirror of `IndexerApiController.Test` (the #jackett-test-all target).
         .route(
             "/api/v2.0/indexers/:indexer_id/Test",
@@ -497,6 +504,7 @@ mod tests {
             cache_service: CacheService::new(),
             log_cache_service: LogCacheService::new(10),
             indexer_config_dir: PathBuf::from("Indexers"),
+            definitions_dir: PathBuf::from("Definitions"),
         })
     }
 

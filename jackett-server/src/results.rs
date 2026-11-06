@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 
+use jackett_common::models::config::proxy_type::ProxyType;
 use jackett_common::models::dto::manual_search_result::{
     ManualSearchResult, ManualSearchResultIndexer, ManualSearchResultIndexerStatus,
 };
@@ -309,6 +311,137 @@ pub async fn desktop_open(Query(params): Query<HashMap<String, String>>) -> Resp
         return (StatusCode::BAD_REQUEST, "unsupported url scheme").into_response();
     }
     os_open_response(&url)
+}
+
+// ---------------------------------------------------------------------------
+// Desktop settings
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+pub struct DesktopProxyBody {
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default, rename = "type")]
+    proxy_type: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    port: Option<i32>,
+    #[serde(default)]
+    username: String,
+    #[serde(default)]
+    password: String,
+}
+
+fn desktop_proxy_type_name(value: i32) -> &'static str {
+    match value {
+        v if v == ProxyType::Socks4 as i32 => "socks4",
+        v if v == ProxyType::Socks5 as i32 => "socks5",
+        _ => "http",
+    }
+}
+
+/// GET /desktop/settings — current proxy settings for the settings dialog.
+pub async fn desktop_settings_get(State(state): State<SharedState>) -> Response {
+    let config = state.server_config.read().await;
+    let enabled = config.proxy_type != ProxyType::Disabled as i32
+        && config
+            .proxy_url
+            .as_deref()
+            .map(|u| !u.trim().is_empty())
+            .unwrap_or(false);
+    json_response(&serde_json::json!({
+        "enabled": enabled,
+        "type": desktop_proxy_type_name(config.proxy_type),
+        "url": config.proxy_url.clone().unwrap_or_default(),
+        "port": config.proxy_port,
+        "username": config.proxy_username.clone().unwrap_or_default(),
+        "password": config.proxy_password.clone().unwrap_or_default(),
+        "proxy_url": config.get_proxy_url(false),
+    }))
+}
+
+/// POST /desktop/settings — persist the proxy and rebuild every indexer so
+/// their reqwest clients pick up the new setting without restarting the app.
+pub async fn desktop_settings_save(
+    State(state): State<SharedState>,
+    Json(body): Json<DesktopProxyBody>,
+) -> Response {
+    let url = body.url.trim().to_string();
+    let enabled = body.enabled && !url.is_empty();
+    let raw_host = {
+        let raw = match url.find("://") {
+            Some(i) => &url[i + 3..],
+            None => &url,
+        };
+        raw.split('/').next().unwrap_or(raw).trim().to_string()
+    };
+    if enabled && raw_host.is_empty() {
+        return (StatusCode::BAD_REQUEST, "invalid proxy address").into_response();
+    }
+    // Accept a "host:port" pasted into the address field without duplicating
+    // the port when get_proxy_url() reassembles the URL.
+    let (host, inline_port) = match raw_host.rfind(':') {
+        Some(i) if raw_host[i + 1..].chars().all(|c| c.is_ascii_digit()) => (
+            raw_host[..i].to_string(),
+            raw_host[i + 1..].parse::<i32>().ok(),
+        ),
+        _ => (raw_host, None),
+    };
+    let port = inline_port
+        .or(body.port)
+        .filter(|p| (1..=65535).contains(p));
+
+    {
+        let mut config = state.server_config.write().await;
+        if !enabled {
+            config.proxy_type = ProxyType::Disabled as i32;
+            config.proxy_url = None;
+            config.proxy_port = None;
+            config.proxy_username = None;
+            config.proxy_password = None;
+        } else {
+            config.proxy_type = match body.proxy_type.to_ascii_lowercase().as_str() {
+                "socks4" => ProxyType::Socks4 as i32,
+                "socks5" => ProxyType::Socks5 as i32,
+                _ => ProxyType::Http as i32,
+            };
+            config.proxy_url = Some(host);
+            config.proxy_port = port;
+            config.proxy_username = (!body.username.trim().is_empty())
+                .then(|| body.username.trim().to_string());
+            config.proxy_password =
+                (!body.password.trim().is_empty()).then(|| body.password.clone());
+        }
+        if let Err(e) = state.configuration_service.save(&config) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("save failed: {e}"),
+            )
+                .into_response();
+        }
+        crate::initialisation::apply_proxy_env(&config);
+    }
+
+    let defs = state.definitions_dir.clone();
+    let cfg = state.indexer_config_dir.clone();
+    let manager = match tokio::task::spawn_blocking(move || {
+        crate::initialisation::build_indexer_manager(&defs, &cfg)
+    })
+    .await
+    {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("reload failed: {e}"),
+            )
+                .into_response();
+        }
+    };
+    let count = manager.indexer_count();
+    *state.indexer_manager.write().await = manager;
+    json_response(&serde_json::json!({ "ok": true, "indexers": count }))
 }
 
 /// One row of the desktop results table. Only the fields the UI renders are
