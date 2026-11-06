@@ -15,6 +15,7 @@ Jackett 官方 C# 版本（[Jackett/Jackett](https://github.com/Jackett/Jackett)
 jackett-common    核心库：索引器框架、Cardigann 引擎、模型、服务
 jackett-server    HTTP 服务（axum）：/api/v2.0/*、Torznab、all 聚合、Blackhole、内置 UI
 jackett-frontend  Vue 3 + Vite 源码，构建产物单文件输出到 jackett-server/wwwroot
+jackett-desktop   Tauri 桌面壳：内嵌 server，独立 P2PSearcher 风格纯搜索界面
 jackett-service   Windows 服务包装
 jackett-tray      Windows 托盘
 jackett-updater   自更新器
@@ -32,6 +33,18 @@ cargo build --release -p jackett-server
 
 运行时加载 `Definitions/`（可用环境变量 `JACKETT_DEFINITIONS_DIR` 指定）、
 数据目录可用 `-d <dir>`（serverconfig.json、索引器配置）。端口默认 9117。
+
+## 桌面版（纯搜索）
+
+```bash
+run_desk.bat          # 或 cargo run -p jackett-desktop
+```
+
+桌面版与 Web 管理界面完全分离：没有 Add Indexer、Configured Indexers 或任何配置页，
+启动后直接并发搜索 `Definitions/` 里全部 Public 类型索引器（当前 89 个），无需配置。
+页面在桌面壳内以 `include_str!` 编译并通过 `/desktop` 提供；搜索走 `/desktop/stream`
+（服务端并发 + SSE 边搜边出结果），下载交给 `/desktop/download` 由系统默认 BT 客户端打开磁力/种子。
+`/desktop?q=关键词` 可在打开时直接开始搜索。
 
 ## 部署（Linux / Armbian 实测流程）
 

@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JackettRS — 种子搜索</title>
+<style>
+:root{
+  --blue-dark:#2a72c4;
+  --blue-mid:#3b8cd6;
+  --blue-light:#4fa2e8;
+  --ink:#22313f;
+  --line:#ccd8e6;
+  --grid:#e7edf4;
+  --head-grad:linear-gradient(180deg,#ffffff 0%,#f1f6fc 100%);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
+body{
+  font:12px "Microsoft YaHei","Segoe UI",Tahoma,Arial,sans-serif;
+  color:var(--ink);
+  display:flex;flex-direction:column;
+  background:#fff;
+  user-select:none;
+}
+button,input{font-family:inherit;font-size:12px}
+input[type="checkbox"]{accent-color:var(--blue-dark);margin:0;vertical-align:middle}
+
+/* ---------- 顶部蓝色区 ---------- */
+.head{
+  flex:none;
+  padding:4px 10px 6px;
+  color:#fff;
+  background:linear-gradient(180deg,#2d79c6 0%,#3c90d9 55%,#51a5e9 100%);
+  border-bottom:2px solid #7db9ee;
+}
+.title-line{height:20px;display:flex;align-items:center;gap:7px;line-height:20px}
+.logo{
+  width:15px;height:15px;line-height:15px;text-align:center;border-radius:2px;
+  background:linear-gradient(180deg,#ffe487,#f0b21d);color:#5b3b00;
+  font-weight:bold;font-size:11px;border:1px solid #fff2b8;
+}
+.app-name{font-size:12px;font-weight:bold;letter-spacing:.5px;text-shadow:0 1px 1px rgba(0,0,0,.25)}
+.app-ver{font-size:11px;color:#dcecff;opacity:.9}
+.title-spacer,.spacer{flex:1}
+.conn{font-size:11px;color:#eaf4ff;display:flex;align-items:center;gap:5px}
+.conn i{width:7px;height:7px;border-radius:50%;background:#ffd45c;box-shadow:0 0 4px #ffd45c;display:block}
+.conn.ok i{background:#8dffa0;box-shadow:0 0 4px #8dffa0}
+.conn.bad i{background:#ff8b7d;box-shadow:0 0 4px #ff8b7d}
+.search-line{display:flex;align-items:center;gap:8px;margin:5px 0 6px}
+#q{
+  flex:1;height:30px;padding:0 9px;font-size:13px;color:#26405c;
+  border:1px solid #1f5f9f;border-radius:2px;outline:none;background:#fff;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.12);user-select:text;
+}
+#q:focus{border-color:#0e4a86;box-shadow:0 0 0 2px rgba(255,255,255,.45)}
+#q::placeholder{color:#93a5b8}
+.btn{cursor:pointer;white-space:nowrap;color:#1a4b83}
+.btn-search{
+  width:92px;height:30px;font-size:14px;font-weight:bold;letter-spacing:3px;
+  background:linear-gradient(180deg,#ffffff,#dfebfa);border:1px solid #8fb4dc;
+  border-radius:3px;box-shadow:0 1px 0 rgba(255,255,255,.7) inset;
+}
+.btn-search:hover{background:linear-gradient(180deg,#ffffff,#cfe2fa)}
+.btn-search:active{background:#cfe2fa}
+.btn-search.busy{letter-spacing:0;font-size:12px;color:#9b3b2f;background:linear-gradient(180deg,#fff3f1,#f6d9d3)}
+.split{position:relative;display:flex;height:30px}
+.split>.btn{
+  height:30px;background:linear-gradient(180deg,#ffffff,#dfebfa);
+  border:1px solid #8fb4dc;box-shadow:0 1px 0 rgba(255,255,255,.7) inset;
+}
+.split>.btn:hover{background:linear-gradient(180deg,#ffffff,#cfe2fa)}
+.btn-random{padding:0 14px;border-radius:3px 0 0 3px;font-weight:bold}
+.btn-arrow{width:22px;padding:0;border-left:none;border-radius:0 3px 3px 0;font-size:10px;color:#3d6a9c}
+.hot-line{height:18px;display:flex;align-items:center;gap:9px;font-size:11px;white-space:nowrap;overflow:hidden}
+.hot-label{color:#eaf4ff;flex:none}
+#hotWords{display:inline-flex;align-items:center;gap:16px;flex:none}
+.hot-line .hot{color:#fff;text-decoration:none;cursor:pointer;border-bottom:1px dotted transparent}
+.hot-line .hot:hover{border-bottom-color:#fff}
+.hot-refresh{
+  border:none;background:transparent;color:#eaf4ff;cursor:pointer;font-size:13px;
+  padding:0 3px;line-height:14px;
+}
+.hot-refresh:hover{color:#fff}
+
+/* ---------- 分类工具条 ---------- */
+.toolbar{
+  flex:none;height:34px;display:flex;align-items:flex-end;gap:10px;padding:0 8px;
+  background:linear-gradient(180deg,#fbfdff,#e6eef7);
+  border-bottom:1px solid #a9bed6;
+}
+.tabs{display:flex;align-items:flex-end;gap:2px;height:100%;padding-top:6px}
+.tab{
+  height:24px;padding:0 13px;cursor:pointer;color:#1b4d86;
+  background:linear-gradient(180deg,#ffffff,#e5eef9);
+  border:1px solid #a8c1dc;border-bottom:none;border-radius:3px 3px 0 0;
+}
+.tab:hover{background:#fff}
+.tab.active{
+  background:#fff;font-weight:bold;color:#16447b;
+  border-top:2px solid #4a91d8;border-left-color:#94b3d3;border-right-color:#94b3d3;
+  height:26px;margin-bottom:-1px;
+}
+.tools{display:flex;align-items:center;gap:7px;padding-bottom:5px;margin-left:auto;font-size:12px}
+.tools-label{color:#33465a}
+.filter-box{display:flex;height:22px;border:1px solid #7ba6d2;background:#fff;border-radius:2px}
+.filter-box input{width:130px;border:none;outline:none;padding:0 5px;color:#26405c;user-select:text}
+.magnifier{
+  width:24px;border:none;border-left:1px solid #b7cde4;cursor:pointer;
+  background:linear-gradient(180deg,#fff,#e3effc);color:#2a6bab;
+}
+.magnifier span{position:relative;display:inline-block;width:9px;height:9px;border:1.5px solid #2a6bab;border-radius:50%}
+.magnifier span::after{content:"";position:absolute;right:-4px;bottom:-3px;width:5px;height:1.5px;background:#2a6bab;transform:rotate(45deg)}
+.link-btn{
+  border:none;background:none;color:#1559b7;cursor:pointer;text-decoration:underline;padding:0 2px;
+}
+.link-btn:hover{color:#d0431b}
+
+/* ---------- 结果表 ---------- */
+.grid{flex:1;position:relative;overflow:auto;background:#fff}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+thead th{
+  position:sticky;top:0;z-index:3;height:26px;padding:0 8px;text-align:left;
+  font-weight:normal;color:#2c3d4e;white-space:nowrap;
+  background:var(--head-grad);
+  border-right:1px solid #dbe4ee;border-bottom:1px solid #bccbdd;
+}
+thead th.sortable{cursor:pointer}
+thead th.sortable:hover{background:linear-gradient(180deg,#fff,#e4effb)}
+th .arrow{color:#3b83c8;font-size:10px;margin-left:2px}
+th.c-check{width:30px;text-align:center;padding:0}
+th.c-size{width:100px}
+th.c-sources{width:90px}
+th.c-format{width:90px}
+th.c-speed{width:100px}
+tbody td{
+  height:25px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);color:#29394a;
+}
+tbody tr:hover td{background:#f1f8ff}
+tbody tr.sel td{background:#dcecff}
+tbody tr.sel:hover td{background:#d0e5ff}
+td.c-check{text-align:center;padding:0}
+.name-cell{display:flex;align-items:center;gap:7px;height:25px;min-width:0}
+.name-cell input{flex:none}
+.name-cell .txt{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:#1a3554;cursor:default;
+}
+.name-cell .src{flex:none;color:#91a2b4;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.sp{font-weight:bold}
+.sp.s4{color:#16924b}.sp.s3{color:#3b8e2f}.sp.s2{color:#b07a12}.sp.s1{color:#a4562c}.sp.s0{color:#9aa8b8}
+.empty{
+  position:absolute;left:0;right:0;top:26px;bottom:0;display:flex;
+  align-items:center;justify-content:center;pointer-events:none;
+  color:#9cabbc;font-size:13px;text-align:center;line-height:1.9;
+}
+.empty.hidden{display:none}
+.empty b{color:#5d7794;font-weight:normal}
+
+/* ---------- 底部操作条 ---------- */
+.bottom{
+  flex:none;height:38px;display:flex;align-items:center;gap:16px;padding:0 10px;
+  background:linear-gradient(180deg,#f8fbfe,#e8f0f9);border-top:1px solid #b6cade;
+}
+.chk{display:flex;align-items:center;gap:5px;cursor:pointer}
+.selinfo{color:#6a7c8e;font-size:11px}
+.btn-download{
+  padding:0 20px;font-weight:bold;
+  background:linear-gradient(180deg,#ffffff,#dceafa);
+  border:1px solid #7ea9d6;border-radius:3px;
+  box-shadow:0 0 0 2px rgba(255,255,255,.75),0 1px 2px rgba(40,90,150,.2);
+}
+.btn-download:hover{background:linear-gradient(180deg,#ffffff,#c7dff9)}
+.bottom .split{height:29px}
+.bottom .split>.btn{height:29px}
+
+/* ---------- 状态栏 ---------- */
+.status{
+  flex:none;height:22px;display:flex;align-items:center;gap:6px;padding:0 8px;
+  color:#fff;font-size:11px;
+  background:linear-gradient(180deg,#3b8cd6,#2d79c6);border-top:1px solid #79b6ec;
+}
+.status-ico{font-size:9px;opacity:.85}
+#statusRight{color:#dcecff}
+
+/* ---------- 下拉菜单 / 提示 ---------- */
+.menu{
+  position:absolute;top:calc(100% + 3px);right:0;z-index:20;min-width:168px;
+  background:#fff;border:1px solid #98b6d7;border-radius:3px;
+  box-shadow:0 4px 12px rgba(30,70,120,.28);padding:3px 0;
+}
+.menu.menu-up{top:auto;bottom:calc(100% + 3px)}
+.menu.hidden{display:none}
+.menu div{padding:6px 14px;cursor:pointer;color:#22384f;white-space:nowrap}
+.menu div:hover{background:#e6f1ff;color:#1559b7}
+.menu hr{border:none;border-top:1px solid #e2eaf4;margin:3px 0}
+/* Result-row context menu: follows the mouse in viewport coordinates. */
+.menu.ctx{position:fixed;left:0;top:0;right:auto;min-width:158px}
+.menu.ctx .cap{
+  padding:5px 14px;color:#8494a6;font-size:11px;cursor:default;
+  max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.menu.ctx .cap:hover{background:none;color:#8494a6}
+.toast{
+  position:fixed;left:50%;bottom:44px;transform:translateX(-50%) translateY(8px);
+  background:rgba(28,52,78,.92);color:#fff;padding:7px 16px;border-radius:4px;
+  font-size:12px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:50;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="title-line">
+    <span class="logo">P</span>
+    <span class="app-name">种子搜索器</span>
+    <span class="app-ver">JackettRS Desktop · 公共源直搜</span>
+    <span class="title-spacer"></span>
+    <span class="conn" id="conn"><i></i><span id="connText">服务器正在连接...</span></span>
+  </div>
+  <div class="search-line">
+    <input id="q" type="text" placeholder="搜索你想要的任何资源！" autocomplete="off" spellcheck="false">
+    <button id="btnSearch" class="btn btn-search">搜 索</button>
+    <div class="split">
+      <button id="btnRandom" class="btn btn-random">随便找找</button>
+      <button id="btnRandomMore" class="btn btn-arrow">&#9662;</button>
+      <div id="randomMenu" class="menu hidden">
+        <div data-act="random">随机搜一个热搜词</div>
+        <div data-act="clear">清空搜索结果</div>
+        <hr>
+        <div data-act="sources">查看公共索引器</div>
+      </div>
+    </div>
+  </div>
+  <div class="hot-line">
+    <span class="hot-label">热搜词：</span>
+    <span id="hotWords"></span>
+    <button id="btnRefreshHot" class="hot-refresh" title="换一批热搜词">&#8635;</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="tabs" id="tabs"></div>
+  <div class="tools">
+    <span class="tools-label">结果搜索：</span>
+    <div class="filter-box">
+      <input id="filter" type="text" placeholder="在结果中筛选" autocomplete="off" spellcheck="false">
+      <button id="btnFilter" class="magnifier" title="筛选"><span></span></button>
+    </div>
+    <button id="btnSort" class="link-btn" title="切换排序方式">立即排序</button>
+  </div>
+</div>
+
+<div class="grid" id="grid">
+  <table>
+    <colgroup>
+      <col style="width:30px"><col><col style="width:100px"><col style="width:90px">
+      <col style="width:90px"><col style="width:100px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="c-check"><input type="checkbox" id="thCheck" title="全选 / 取消全选"></th>
+        <th class="sortable" data-sort="title">名称<span class="arrow" id="arrow-title"></span></th>
+        <th class="sortable c-size" data-sort="size">大小<span class="arrow" id="arrow-size"></span></th>
+        <th class="sortable c-sources" data-sort="sources">资源数<span class="arrow" id="arrow-sources"></span></th>
+        <th class="c-format">格式</th>
+        <th class="sortable c-speed" data-sort="seeders">下载速度<span class="arrow" id="arrow-seeders"></span></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div id="empty" class="empty">
+    <div>输入关键词后点击「搜 索」开始<br><b>结果会边搜边显示 · 双击某一行可直接下载</b></div>
+  </div>
+</div>
+
+<div class="bottom">
+  <label class="chk"><input type="checkbox" id="selAll"> 全选</label>
+  <label class="chk"><input type="checkbox" id="selInvert"> 反选</label>
+  <span class="selinfo" id="selInfo">已选 0 项</span>
+  <span class="spacer"></span>
+  <div class="split">
+    <button id="btnDownload" class="btn btn-download">下载选中</button>
+    <button id="btnDownloadMore" class="btn btn-arrow">&#9662;</button>
+    <div id="downloadMenu" class="menu menu-up hidden">
+      <div data-act="download">下载选中（磁力 / 种子）</div>
+      <div data-act="copy">复制选中链接</div>
+      <div data-act="selectall">选中全部结果</div>
+      <hr>
+      <div data-act="clearsel">清空选择</div>
+    </div>
+  </div>
+</div>
+
+<footer class="status">
+  <span class="status-ico">&#9673;</span>
+  <span id="statusText">服务器正在连接...</span>
+  <span class="spacer"></span>
+  <span id="statusRight"></span>
+</footer>
+
+<div id="ctxMenu" class="menu ctx hidden">
+  <div class="cap" id="ctxTitle"></div>
+  <hr>
+  <div data-act="copylink">复制链接</div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+
+  const HOT_POOL = [
+    "三体", "阿凡达", "权力的游戏", "周杰伦", "哈利波特", "国家地理",
+    "古典音乐", "原神", "Linux", "纪录片", "三体全集", "星际穿越",
+    "Photoshop", "考研资料", "钢琴曲", "BBC 自然", "诺贝尔文学奖", "开源图书"
+  ];
+  const TABS = [
+    { key: "all",      label: "全部" },
+    { key: "movie",    label: "影视" },
+    { key: "music",    label: "音乐" },
+    { key: "software", label: "软件" },
+    { key: "book",     label: "书籍" },
+    { key: "archive",  label: "压缩文件" }
+  ];
+  // Tabs filter the already-found rows (P2PSearcher behaviour): torznab parent
+  // category first, then a title heuristic for sources that omit categories.
+  const TAB_RULES = {
+    movie:    { cats: [2, 5], re: /(1080[pi]|720p|2160p|x26[45]|h26[45]|bluray|bdrip|web-?dl|webrip|hdrip|dvdrip|s\d{1,2}e\d{1,2}|全集|剧场版|字幕|\.(mkv|mp4|avi|rmvb|ts|m2ts)(\b|$))/i },
+    music:    { cats: [3],    re: /(\.(mp3|flac|ape|wav|aac|m4a|ogg|dsf)(\b|$)|专辑|原声|ost|discography|无损|音乐|歌曲)/i },
+    software: { cats: [4],    re: /(\.(exe|msi|apk|dmg|deb|rpm|iso)(\b|$)|setup|portable|crack|破解|绿色版|安装版|软件|windows|adobe|office|photoshop|游戏)/i },
+    book:     { cats: [7],    re: /(\.(pdf|epub|mobi|azw3|txt|djvu|chm|cbz|cbr)(\b|$)|电子书|小说|漫画|扫描版|书籍|文集)/i },
+    archive:  { cats: [],     re: /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|tbz|cab|iso)(\b|$)/i }
+  };
+  const SORTS = ["seeders", "sources", "size", "title"];
+
+  const st = {
+    indexers: [], groups: [], map: new Map(), selected: new Set(),
+    tab: "all", filter: "", sort: "seeders", desc: true,
+    searching: false, query: "", done: 0, errors: 0, total: 0,
+    totalSources: 0, start: 0, stream: null
+  };
+
+  /* ---------------- helpers ---------------- */
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+  function fmtSize(n) {
+    if (n == null || !isFinite(n) || n <= 0) return "&mdash;";
+    const u = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return (i < 2 ? Math.round(v) : v.toFixed(v >= 100 ? 0 : 1)) + " " + u[i];
+  }
+
+  function speedHtml(n) {
+    if (!n) return '<span class="sp s0">&mdash;</span>';
+    const lvl = n >= 100 ? 4 : n >= 30 ? 3 : n >= 10 ? 2 : 1;
+    const txt = ["", "较慢", "一般", "较快", "极快"][lvl];
+    return '<span class="sp s' + lvl + '" title="依据做种数 ' + n + ' 估算">' + txt + "</span>";
+  }
+
+  // Only real file extensions count. A loose `.xxx` match would turn version
+  // numbers ("24.04.2") or dotted release names ("The.Lord.of...") into a
+  // bogus format.
+  const EXT_RE = /\.(mkv|mp4|avi|rmvb|wmv|m2ts|ts|mov|flv|webm|mp3|flac|ape|wav|aac|m4a|ogg|wma|zip|rar|7z|tar|gz|bz2|xz|tgz|tbz|iso|pdf|epub|mobi|azw3|txt|djvu|chm|cbr|cbz|exe|msi|apk|dmg|deb|rpm|torrent)(?=[\s\])}.,;_\-]|$)/i;
+  function fmtFormat(title, cats) {
+    const m = EXT_RE.exec(title || "");
+    if (m) return esc(m[1].toUpperCase());
+    const p = (cats || []).map((c) => Math.floor(Math.abs(c) / 1000));
+    if (p.some((x) => x === 2 || x === 5)) return "视频";
+    if (p.includes(3)) return "音频";
+    if (p.includes(7)) return "电子书";
+    if (p.includes(4)) return "软件";
+    return "种子";
+  }
+
+  const normTitle = (t) => String(t || "").toLowerCase()
+    .replace(/[^0-9a-z\u4e00-\u9fff]+/g, "");
+
+  function rowKey(title, size, magnet) {
+    return normTitle(title || magnet) + "|" + Math.round((size || 0) / 1048576);
+  }
+
+  function toast(msg) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+
+  function setStatus(text, right) {
+    $("statusText").textContent = text;
+    if (right !== undefined) $("statusRight").textContent = right;
+  }
+
+  function setConn(text, kind) {
+    $("connText").textContent = text;
+    $("conn").className = "conn" + (kind ? " " + kind : "");
+  }
+
+  /* ---------------- rows / grouping ---------------- */
+  function addRow(r) {
+    const title = (r.title || "").trim();
+    const url = r.magnet || r.link;
+    if (!title && !url) return;
+    const key = rowKey(title, r.size, r.magnet);
+    let g = st.map.get(key);
+    if (!g) {
+      g = {
+        key, title: title || url, size: r.size || null,
+        seeders: r.seeders || 0, peers: r.peers || 0,
+        category: r.category || [], sources: [],
+        fmt: fmtFormat(title, r.category), publish: r.publish_date || ""
+      };
+      st.map.set(key, g);
+      st.groups.push(g);
+    }
+    const src = {
+      tracker: r.tracker, trackerId: r.tracker_id,
+      magnet: r.magnet, link: r.link, details: r.details, seeders: r.seeders || 0
+    };
+    const target = src.magnet || src.link || "";
+    if (!g.sources.some((s) => s.trackerId === src.trackerId && (s.magnet || s.link || "") === target)) {
+      g.sources.push(src);
+      st.total++;
+    }
+    g.seeders = Math.max(g.seeders, src.seeders);
+    if (!g.size && r.size) g.size = r.size;
+  }
+
+  function matchTab(g) {
+    if (st.tab === "all") return true;
+    const rule = TAB_RULES[st.tab];
+    const catHit = g.category.some((c) => rule.cats.includes(Math.floor(Math.abs(c) / 1000)));
+    return catHit || rule.re.test(g.title);
+  }
+
+  function visible() {
+    const f = st.filter.trim().toLowerCase();
+    let list = st.groups.filter((g) =>
+      (!f || g.title.toLowerCase().includes(f)) && matchTab(g));
+    const dir = st.desc ? -1 : 1;
+    list.sort((a, b) => {
+      let d;
+      switch (st.sort) {
+        case "size":    d = (a.size || 0) - (b.size || 0); break;
+        case "sources": d = a.sources.length - b.sources.length; break;
+        case "title":   d = a.title.localeCompare(b.title, "zh-CN"); break;
+        default:        d = (a.seeders || 0) - (b.seeders || 0);
+      }
+      if (!d) d = b.sources.length - a.sources.length;
+      return d * dir;
+    });
+    return list;
+  }
+
+  let renderPending = false;
+  function scheduleRender() {
+    if (renderPending) return;
+    renderPending = true;
+    requestAnimationFrame(() => { renderPending = false; render(); });
+  }
+
+  const MAX_ROWS = 1200;
+  function render() {
+    const list = visible();
+    const shown = list.slice(0, MAX_ROWS);
+    const html = shown.map((g) => {
+      const sel = st.selected.has(g.key);
+      const sp = speedHtml(g.seeders);
+      return '<tr class="' + (sel ? "sel" : "") + '" data-key="' + esc(g.key) + '">' +
+        '<td class="c-check"><input type="checkbox" ' + (sel ? "checked" : "") + '></td>' +
+        '<td><div class="name-cell"><span class="txt" title="' + esc(g.title) + '">' + esc(g.title) + "</span>" +
+          '<span class="src" title="' + esc(g.sources.map((s) => s.tracker).join("、")) + '">[' +
+            esc(g.sources[0].tracker || "") + (g.sources.length > 1 ? " 等 " + g.sources.length + " 站" : "") + "]</span></div></td>" +
+        '<td class="num">' + fmtSize(g.size) + "</td>" +
+        '<td class="num">' + g.sources.length + "</td>" +
+        '<td>' + g.fmt + "</td>" +
+        '<td>' + sp + "</td>" +
+      "</tr>";
+    }).join("");
+    $("tbody").innerHTML = html;
+    $("empty").classList.toggle("hidden", !!list.length || st.searching);
+    if (st.searching && !list.length) {
+      $("empty").innerHTML = "<div>正在搜索「<b>" + esc(st.query) + "</b>」…<br><b>结果会边搜边显示</b></div>";
+    } else if (!list.length && st.indexers.length) {
+      $("empty").innerHTML = "<div>" + (st.groups.length ? "当前分类 / 筛选条件下没有结果" : "输入关键词后点击「搜 索」开始") +
+        "<br><b>结果会边搜边显示 · 双击某一行可直接下载</b></div>";
+    }
+    $("selInfo").textContent = "已选 " + st.selected.size + " 项";
+    $("selAll").checked = !!list.length && list.every((g) => st.selected.has(g.key));
+    $("thCheck").checked = $("selAll").checked;
+    $("statusRight").textContent = st.indexers.length
+      ? "结果 " + list.length + " 条" + (list.length > MAX_ROWS ? "（仅显示前 " + MAX_ROWS + " 条）" : "") +
+        " · 公共源 " + st.indexers.length
+      : "";
+    for (const k of SORTS) {
+      const a = $("arrow-" + k);
+      if (a) a.textContent = k === st.sort ? (st.desc ? "▼" : "▲") : "";
+    }
+    $("btnSort").title = "当前排序：" + ({ seeders: "下载速度", sources: "资源数", size: "大小", title: "名称" })[st.sort] +
+      (st.desc ? "（降序）" : "（升序）") + " — 点击切换";
+  }
+
+  /* ---------------- search (server-side fan-out over one SSE stream) ------ */
+  function resetResults() {
+    st.groups = []; st.map = new Map(); st.selected = new Set();
+    st.total = 0; st.done = 0; st.errors = 0;
+    st.totalSources = st.indexers.length;
+    st.filter = ""; $("filter").value = "";
+    render();
+  }
+
+  function progress(q) {
+    setStatus(st.searching
+      ? "正在搜索「" + q + "」… 已完成 " + st.done + "/" + st.totalSources +
+        " 个公共源，命中 " + st.groups.length + " 条" + (st.errors ? "（" + st.errors + " 个源无响应）" : "")
+      : "已停止搜索 · 保留 " + st.groups.length + " 条结果");
+  }
+
+  function closeStream() {
+    if (st.stream) { st.stream.close(); st.stream = null; }
+  }
+
+  function finishSearch(failed) {
+    if (!st.searching) return;
+    st.searching = false;
+    closeStream();
+    $("btnSearch").textContent = "搜 索";
+    $("btnSearch").classList.remove("busy");
+    const secs = ((Date.now() - st.start) / 1000).toFixed(1);
+    setStatus((failed ? "连接中断" : "搜索完成") + " · " + st.done + " 个公共源 · " +
+      st.groups.length + " 条结果 · 用时 " + secs + "s" +
+      (st.errors ? " · " + st.errors + " 个源无响应" : ""));
+    render();
+  }
+
+  function stopSearch() {
+    if (!st.searching) return;
+    st.searching = false;
+    closeStream();
+    $("btnSearch").textContent = "搜 索";
+    $("btnSearch").classList.remove("busy");
+    progress(st.query);
+    render();
+  }
+
+  function doSearch(term) {
+    if (st.searching) {
+      // Clicking the Search button stops; a new term (hot word / Enter on a
+      // different keyword) replaces the running search.
+      if (term == null) { stopSearch(); return; }
+      stopSearch();
+    }
+    const q = String(term != null ? term : $("q").value).trim();
+    if (!q) { $("q").focus(); toast("请输入要搜索的关键词"); return; }
+    if (!st.indexers.length) { toast("服务器尚未就绪，请稍候"); return; }
+    $("q").value = q;
+    st.query = q;
+    st.searching = true;
+    st.start = Date.now();
+    resetResults();
+    $("btnSearch").textContent = "停止搜索";
+    $("btnSearch").classList.add("busy");
+    progress(q);
+
+    const u = new URL("/desktop/stream", location.origin);
+    u.searchParams.set("q", q);
+    const es = new EventSource(u.toString());
+    st.stream = es;
+
+    es.addEventListener("start", (e) => {
+      try { st.totalSources = JSON.parse(e.data).total || st.totalSources; } catch (_) {}
+      progress(q);
+    });
+    es.addEventListener("rows", (e) => {
+      if (!st.searching) return;
+      try {
+        const d = JSON.parse(e.data);
+        for (const row of (d.rows || [])) addRow(row);
+        if (d.error) st.errors++;
+      } catch (_) { st.errors++; }
+      st.done++;
+      progress(q);
+      scheduleRender();
+    });
+    es.addEventListener("done", () => finishSearch(false));
+    // EventSource reconnects on its own; a dropped stream means a partial
+    // result set, not a reason to hammer all trackers again.
+    es.onerror = () => { if (st.searching) finishSearch(true); };
+  }
+
+  /* ---------------- download ---------------- */
+  function bestSource(g) {
+    const list = g.sources.slice().sort((a, b) => (b.seeders || 0) - (a.seeders || 0));
+    return list.find((s) => s.magnet) || list.find((s) => s.link) || null;
+  }
+
+  async function openRows(list) {
+    if (!list.length) { toast("请先勾选要下载的资源"); return; }
+    if (list.length > 20 && !confirm("一次向下载器提交 " + list.length + " 个资源？")) return;
+    setStatus("正在向下载器提交 " + list.length + " 个资源…");
+    let ok = 0;
+    for (const g of list) {
+      const s = bestSource(g);
+      const link = s && (s.magnet || s.link);
+      if (!link) continue;
+      const u = new URL("/desktop/download", location.origin);
+      u.searchParams.set("id", s.trackerId || "");
+      u.searchParams.set("url", link);
+      try { const r = await fetch(u); if (r.ok) ok++; } catch (_) {}
+      await new Promise((done) => setTimeout(done, 120));
+    }
+    toast("已提交 " + ok + "/" + list.length + " 个资源到系统下载器");
+    setStatus("已提交 " + ok + "/" + list.length + " 个资源（由系统默认的 BT 客户端打开）");
+  }
+
+  function selectedGroups() {
+    const set = st.selected;
+    return visible().filter((g) => set.has(g.key));
+  }
+
+  async function copyLinks(groups) {
+    const lines = [];
+    for (const g of groups) {
+      for (const s of g.sources) {
+        const l = s.magnet || s.link;
+        if (l && !lines.includes(l)) lines.push(l);
+      }
+    }
+    if (!lines.length) { toast("没有可复制的链接"); return; }
+    const text = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (_) {}
+      document.body.removeChild(ta);
+    }
+    toast("已复制 " + lines.length + " 条链接到剪贴板");
+  }
+
+  function copySelected() { return copyLinks(selectedGroups()); }
+
+  /* ---------------- UI wiring ---------------- */
+  function renderTabs() {
+    $("tabs").innerHTML = TABS.map((t) =>
+      '<button class="tab' + (t.key === st.tab ? " active" : "") + '" data-tab="' + t.key + '">' +
+      t.label + "</button>").join("");
+  }
+
+  function renderHot() {
+    const pool = HOT_POOL.slice().sort(() => Math.random() - 0.5).slice(0, 9);
+    $("hotWords").innerHTML = pool.map((w) =>
+      '<span class="hot" data-word="' + esc(w) + '">' + esc(w) + "</span>").join("");
+  }
+
+  function setTab(key) {
+    st.tab = key;
+    renderTabs();
+    render();
+  }
+
+  function closeMenus() {
+    $("randomMenu").classList.add("hidden");
+    $("downloadMenu").classList.add("hidden");
+    $("ctxMenu").classList.add("hidden");
+  }
+
+  function toggleMenu(menu) {
+    const opening = $(menu).classList.contains("hidden");
+    closeMenus();
+    if (opening) $(menu).classList.remove("hidden");
+  }
+
+  renderTabs();
+  renderHot();
+  render();
+  setStatus("服务器正在连接...", "");
+
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+  $("btnSearch").addEventListener("click", () => doSearch());
+  $("btnRandom").addEventListener("click", () => {
+    const w = HOT_POOL[Math.floor(Math.random() * HOT_POOL.length)];
+    doSearch(w);
+  });
+  $("btnRandomMore").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu("randomMenu"); });
+  $("btnRefreshHot").addEventListener("click", renderHot);
+  $("hotWords").addEventListener("click", (e) => {
+    const a = e.target.closest("[data-word]");
+    if (a) doSearch(a.dataset.word);
+  });
+  $("randomMenu").addEventListener("click", (e) => {
+    const act = e.target.dataset.act;
+    closeMenus();
+    if (act === "random") doSearch(HOT_POOL[Math.floor(Math.random() * HOT_POOL.length)]);
+    if (act === "clear") { stopSearch(); resetResults(); setStatus("结果已清空 · 直接搜索 " + st.indexers.length + " 个 Public 索引器"); }
+    if (act === "sources") toast("已加载 " + st.indexers.length + " 个 Public 索引器（无需配置）");
+  });
+
+  $("tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (b) setTab(b.dataset.tab);
+  });
+  $("filter").addEventListener("input", (e) => { st.filter = e.target.value; render(); });
+  $("btnFilter").addEventListener("click", () => { $("filter").focus(); render(); });
+
+  function cycleSort() {
+    const i = SORTS.indexOf(st.sort);
+    if (st.desc) { st.desc = false; }
+    else { st.sort = SORTS[(i + 1) % SORTS.length]; st.desc = true; }
+    render();
+  }
+  $("btnSort").addEventListener("click", cycleSort);
+  document.querySelectorAll("th.sortable").forEach((th) => {
+    th.addEventListener("click", () => {
+      const k = th.dataset.sort;
+      if (st.sort === k) st.desc = !st.desc;
+      else { st.sort = k; st.desc = k !== "title"; }
+      render();
+    });
+  });
+
+  function selectVisible(on) {
+    for (const g of visible()) on ? st.selected.add(g.key) : st.selected.delete(g.key);
+    render();
+  }
+  $("selAll").addEventListener("change", (e) => selectVisible(e.target.checked));
+  $("thCheck").addEventListener("change", (e) => selectVisible(e.target.checked));
+  $("selInvert").addEventListener("change", (e) => {
+    for (const g of visible()) st.selected.has(g.key) ? st.selected.delete(g.key) : st.selected.add(g.key);
+    e.target.checked = false;
+    render();
+  });
+
+  $("tbody").addEventListener("change", (e) => {
+    if (!e.target.matches('input[type="checkbox"]')) return;
+    const tr = e.target.closest("tr[data-key]");
+    if (!tr) return;
+    e.target.checked ? st.selected.add(tr.dataset.key) : st.selected.delete(tr.dataset.key);
+    tr.classList.toggle("sel", e.target.checked);
+    $("selInfo").textContent = "已选 " + st.selected.size + " 项";
+    $("selAll").checked = !!visible().length && visible().every((g) => st.selected.has(g.key));
+    $("thCheck").checked = $("selAll").checked;
+  });
+  $("tbody").addEventListener("dblclick", (e) => {
+    const tr = e.target.closest("tr[data-key]");
+    if (!tr) return;
+    const g = st.map.get(tr.dataset.key);
+    if (g) openRows([g]);
+  });
+
+  // Right-click a result row: show which resource the menu applies to, and
+  // offer a one-step copy of its magnet / torrent links.
+  let ctxKey = null;
+  $("tbody").addEventListener("contextmenu", (e) => {
+    const tr = e.target.closest("tr[data-key]");
+    if (!tr) return;
+    e.preventDefault();
+    const g = st.map.get(tr.dataset.key);
+    if (!g) return;
+    closeMenus();
+    ctxKey = g.key;
+    $("ctxTitle").textContent = g.title;
+    $("ctxTitle").title = g.title;
+    const m = $("ctxMenu");
+    m.classList.remove("hidden");
+    const w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.max(4, Math.min(e.clientX, window.innerWidth - w - 6)) + "px";
+    m.style.top = Math.max(4, Math.min(e.clientY, window.innerHeight - h - 6)) + "px";
+  });
+  $("ctxMenu").addEventListener("click", (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+    closeMenus();
+    const g = ctxKey && st.map.get(ctxKey);
+    if (act === "copylink" && g) copyLinks([g]);
+  });
+
+  $("btnDownload").addEventListener("click", () => openRows(selectedGroups()));
+  $("btnDownloadMore").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu("downloadMenu"); });
+  $("downloadMenu").addEventListener("click", (e) => {
+    const act = e.target.dataset.act;
+    closeMenus();
+    if (act === "download") openRows(selectedGroups());
+    if (act === "copy") copySelected();
+    if (act === "selectall") selectVisible(true);
+    if (act === "clearsel") { st.selected.clear(); render(); }
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".split")) closeMenus();
+  });
+  document.addEventListener("contextmenu", (e) => {
+    if (!e.target.closest("#tbody")) $("ctxMenu").classList.add("hidden");
+  });
+  $("grid").addEventListener("scroll", closeMenus);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeMenus(); if (st.searching) stopSearch(); }
+  });
+
+  /* ---------------- boot ---------------- */
+  (async function boot() {
+    try {
+      const res = await fetch("/desktop/indexers");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      st.indexers = data.indexers || [];
+      if (!st.indexers.length) throw new Error("没有加载任何 Public 索引器");
+      setConn("已连接 " + data.total + " 个公共索引器", "ok");
+      setStatus("就绪 · 直接搜索 " + data.total + " 个 Public 索引器，无需任何配置");
+      render();
+      // Optional deep link: /desktop?q=<term> starts a search on open.
+      const initial = new URLSearchParams(location.search).get("q");
+      if (initial) { $("q").value = initial; doSearch(initial); }
+    } catch (e) {
+      setConn("服务器连接失败", "bad");
+      setStatus("服务器连接失败：" + e.message + "（请从桌面程序打开本页面）");
+      $("empty").innerHTML = "<div>无法连接内置搜索服务<br><b>请通过 JackettRS 桌面程序启动</b></div>";
+    }
+  })();
+})();
+</script>
+</body>
+</html>

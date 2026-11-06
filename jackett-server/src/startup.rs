@@ -127,6 +127,14 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v2.0/indexers/all/results/manualsearch",
             get(crate::results::manualsearch_all),
         )
+        // Desktop pure-search shell: public indexer list, one-indexer search
+        // (fanned out by the UI), magnet/torrent handoff to the OS default
+        // handler (qBittorrent and friends register for these schemes).
+        .route("/desktop/indexers", get(crate::results::desktop_indexers))
+        .route("/desktop/stream", get(crate::results::desktop_stream))
+        .route("/desktop/search", get(crate::results::desktop_search))
+        .route("/desktop/download", get(crate::results::desktop_download))
+        .route("/desktop/open", get(crate::results::desktop_open))
         // Mirror of `IndexerApiController.Test` (the #jackett-test-all target).
         .route(
             "/api/v2.0/indexers/:indexer_id/Test",
@@ -488,6 +496,7 @@ mod tests {
             indexer_manager: RwLock::new(IndexerManagerService::new()),
             cache_service: CacheService::new(),
             log_cache_service: LogCacheService::new(10),
+            indexer_config_dir: PathBuf::from("Indexers"),
         })
     }
 
@@ -496,17 +505,11 @@ mod tests {
         assert!(BUILTIN_INDEX_HTML.contains("<html"));
         assert!(BUILTIN_INDEX_HTML.contains("/api/v2.0/indexers"));
         assert!(BUILTIN_INDEX_HTML.contains("results/manualsearch"));
-        // Add Indexer / Manual Search / Cached Releases each open as a modal popup;
-        // results and cache tables use C#-style sortable columns.
-        assert!(BUILTIN_INDEX_HTML.contains("add-modal"));
-        assert!(BUILTIN_INDEX_HTML.contains("search-modal"));
-        assert!(BUILTIN_INDEX_HTML.contains("cache-modal"));
-        assert!(BUILTIN_INDEX_HTML.contains("add-list"));
-        assert!(BUILTIN_INDEX_HTML.contains("add-row"));
-        assert!(BUILTIN_INDEX_HTML.contains("add-do"));
-        assert!(BUILTIN_INDEX_HTML.contains("results-table"));
-        assert!(BUILTIN_INDEX_HTML.contains("cache-table"));
-        assert!(BUILTIN_INDEX_HTML.contains("data-key=\"published\""));
+        // The built-in UI is the Vue single-file bundle: dashboard buttons and
+        // modals are compiled inline, with no external script/style assets.
+        assert!(BUILTIN_INDEX_HTML.contains("Add Indexer"));
+        assert!(BUILTIN_INDEX_HTML.contains("Configured Indexers"));
+        assert!(BUILTIN_INDEX_HTML.contains("Manual Search"));
         assert!(!BUILTIN_INDEX_HTML.contains("<script src="));
     }
 

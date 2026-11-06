@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.jackettrs.desktop",
   "build": {
-    "frontendDist": "../jackett-server/wwwroot"
+    "frontendDist": "../jackett-desktop/wwwroot"
   },
   "app": {
     "windows": [],

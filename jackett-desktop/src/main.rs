@@ -4,8 +4,17 @@
 //! shows its Web UI in a native window. The port is bound before the window is
 //! created so the WebView can navigate straight to the real URL.
 
+use axum::response::Html;
+use axum::routing::get;
 use jackett_server::{build_app_state, RuntimeServerConfig, RuntimeSettings};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// The desktop UI is a standalone P2PSearcher-style page (no Add Indexer /
+/// Configured Indexers, no settings) compiled into the shell itself. Serving it
+/// over the embedded HTTP server keeps the page pure HTML/JS — no Tauri IPC.
+async fn desktop_ui() -> Html<&'static str> {
+    Html(include_str!("../wwwroot/index.html"))
+}
 
 fn main() {
     // Own tokio runtime drives the embedded server; tauri is told to use it
@@ -27,13 +36,13 @@ fn main() {
             }
         }))
         .setup(move |app| {
-            let url: tauri::Url = format!("http://127.0.0.1:{port}")
+            let url: tauri::Url = format!("http://127.0.0.1:{port}/desktop")
                 .parse()
                 .expect("server url");
             let win = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
-                .title("JackettRS")
-                .inner_size(1200.0, 800.0)
-                .min_inner_size(900.0, 600.0)
+                .title("JackettRS — 种子搜索")
+                .inner_size(1000.0, 680.0)
+                .min_inner_size(760.0, 520.0)
                 .build()?;
             win.show()?;
             Ok(())
@@ -65,6 +74,10 @@ async fn start_embedded_server() -> (u16, tokio::runtime::Handle) {
     let (state, app) = build_app_state(runtime_settings, &server_options)
         .await
         .expect("build app state");
+    // Explicit routes take priority over the router's SPA fallback, so this
+    // works both from a dev checkout and from a packaged install where no
+    // external wwwroot folder exists.
+    let app = app.route("/desktop", get(desktop_ui));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
