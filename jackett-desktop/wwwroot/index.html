@@ -177,6 +177,27 @@ td.c-check{text-align:center;padding:0}
 .bottom .split{height:29px}
 .bottom .split>.btn{height:29px}
 
+/* ---------- 右侧二维码栏 ---------- */
+.body-row{display:flex;flex-direction:row;flex:1;min-height:0}
+.main{display:flex;flex-direction:column;flex:1;min-height:0}
+.sidebar{
+  flex:none;width:190px;overflow:auto;
+  background:#f7fafd;border-left:1px solid #cfe0f1;padding:12px 12px 18px;
+}
+.side-title{
+  font-size:13px;font-weight:bold;color:#1b4d86;margin:2px 0 12px;
+  padding-bottom:8px;border-bottom:1px solid #e3eaf3;
+}
+.qr{background:#fff;border:1px solid #dbe5f0;border-radius:4px;padding:10px;margin-bottom:14px;text-align:center}
+.qr-box{width:152px;height:152px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f3f6fa;border-radius:2px}
+.qr-box img{width:100%;height:100%;object-fit:contain;display:block}
+.qr-cap{margin-top:8px;font-size:12px;color:#35506b}
+.qr-ph{
+  width:152px;height:152px;margin:0 auto;display:flex;align-items:center;justify-content:center;
+  text-align:center;color:#9aa8b8;font-size:11px;line-height:1.6;
+  border:1px dashed #cdd9e6;background:#f8fafc;border-radius:2px;padding:8px;white-space:pre-line;
+}
+
 /* ---------- 状态栏 ---------- */
 .status{
   flex:none;height:22px;display:flex;align-items:center;gap:6px;padding:0 8px;
@@ -299,7 +320,9 @@ td.c-check{text-align:center;padding:0}
   </div>
 </header>
 
-<div class="toolbar">
+<div class="body-row">
+  <div class="main">
+  <div class="toolbar">
   <div class="tabs" id="tabs"></div>
   <div class="tools">
     <span class="tools-label">结果搜索：</span>
@@ -353,6 +376,12 @@ td.c-check{text-align:center;padding:0}
       <div data-act="clearsel">清空选择</div>
     </div>
   </div>
+</div>
+  </div>
+  <aside class="sidebar">
+    <div class="side-title">扫码关注</div>
+    <div id="qrList"></div>
+  </aside>
 </div>
 
 <footer class="status">
@@ -458,6 +487,36 @@ td.c-check{text-align:center;padding:0}
   function leechHtml(g) {
     const l = (g.peers || 0) - (g.seeders || 0);
     return (g.peers || g.seeders) ? Math.max(0, l) : "&mdash;";
+  }
+
+  // Right-hand QR / contact panel (mirrors the side bar of the reference project):
+  // the PNGs live in jackett-desktop/assets/ with these exact file names and
+  // show up here; a missing file degrades to a placeholder.
+  const QR_CODES = [
+    { file: "qr_weibo.png",  caption: "微博" },
+    { file: "qr_app.png",    caption: "App" },
+    { file: "qr_xianyu.png", caption: "闲鱼" },
+  ];
+
+  function renderSidebar() {
+    const list = $("qrList");
+    if (!list) return;
+    list.innerHTML = QR_CODES.map((q, i) =>
+      '<div class="qr">' +
+        '<div class="qr-box" id="qrbox-' + i + '"></div>' +
+        '<div class="qr-cap">' + esc(q.caption) + "</div>" +
+      "</div>"
+    ).join("");
+    QR_CODES.forEach((q, i) => {
+      const box = $("qrbox-" + i);
+      const img = new Image();
+      img.onload = () => box.appendChild(img);
+      img.onerror = () => {
+        box.className = "qr-ph";
+        box.textContent = "[图片缺失]\n" + q.file;
+      };
+      img.src = "/desktop/assets/" + encodeURIComponent(q.file);
+    });
   }
 
   // Only real file extensions count. A loose `.xxx` match would turn version
@@ -873,6 +932,7 @@ td.c-check{text-align:center;padding:0}
 
   renderTabs();
   renderHot();
+  renderSidebar();
   render();
   setStatus("服务器正在连接...", "");
 

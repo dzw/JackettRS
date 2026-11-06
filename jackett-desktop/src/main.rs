@@ -4,7 +4,9 @@
 //! shows its Web UI in a native window. The port is bound before the window is
 //! created so the WebView can navigate straight to the real URL.
 
-use axum::response::Html;
+use axum::extract::Path as AxumPath;
+use axum::http::{header, StatusCode};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use jackett_server::{build_app_state, RuntimeServerConfig, RuntimeSettings};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
@@ -14,6 +16,25 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 /// over the embedded HTTP server keeps the page pure HTML/JS — no Tauri IPC.
 async fn desktop_ui() -> Html<&'static str> {
     Html(include_str!("../wwwroot/index.html"))
+}
+
+/// QR / contact images embedded into the binary at compile time, so the desktop
+/// build needs no external files (works in both dev and packaged installs).
+/// The `file` names must match the entries in index.html's `QR_CODES` array.
+const QR_IMAGES: &[(&str, &[u8])] = &[
+    ("qr_weibo.png", include_bytes!("../assets/qr_weibo.png")),
+    ("qr_app.png", include_bytes!("../assets/qr_app.png")),
+    ("qr_xianyu.png", include_bytes!("../assets/qr_xianyu.png")),
+];
+
+/// Serves the embedded QR images under `/desktop/assets/<file>`.
+async fn desktop_asset(AxumPath(rel): AxumPath<String>) -> Response {
+    for (name, bytes) in QR_IMAGES {
+        if *name == rel {
+            return ([(header::CONTENT_TYPE, "image/png")], bytes.to_vec()).into_response();
+        }
+    }
+    StatusCode::NOT_FOUND.into_response()
 }
 
 fn main() {
@@ -77,7 +98,9 @@ async fn start_embedded_server() -> (u16, tokio::runtime::Handle) {
     // Explicit routes take priority over the router's SPA fallback, so this
     // works both from a dev checkout and from a packaged install where no
     // external wwwroot folder exists.
-    let app = app.route("/desktop", get(desktop_ui));
+    let app = app
+        .route("/desktop", get(desktop_ui))
+        .route("/desktop/assets/:file", get(desktop_asset));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
