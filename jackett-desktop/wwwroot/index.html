@@ -129,10 +129,10 @@ thead th.sortable{cursor:pointer}
 thead th.sortable:hover{background:linear-gradient(180deg,#fff,#e4effb)}
 th .arrow{color:#3b83c8;font-size:10px;margin-left:2px}
 th.c-check{width:30px;text-align:center;padding:0}
-th.c-size{width:100px}
-th.c-sources{width:90px}
-th.c-format{width:90px}
-th.c-speed{width:100px}
+th.c-size{width:88px}
+th.c-sources{width:56px}
+th.c-format{width:56px}
+th.c-g,th.c-s,th.c-l{width:auto}
 tbody td{
   height:25px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);color:#29394a;
@@ -149,6 +149,7 @@ td.c-check{text-align:center;padding:0}
 }
 .name-cell .src{flex:none;color:#91a2b4;font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .num{text-align:right;font-variant-numeric:tabular-nums}
+.stat{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .sp{font-weight:bold}
 .sp.s4{color:#16924b}.sp.s3{color:#3b8e2f}.sp.s2{color:#b07a12}.sp.s1{color:#a4562c}.sp.s0{color:#9aa8b8}
 .empty{
@@ -184,6 +185,10 @@ td.c-check{text-align:center;padding:0}
 }
 .status-ico{font-size:9px;opacity:.85}
 #statusRight{color:#dcecff}
+.port-label{
+  margin-left:9px;padding-left:9px;border-left:1px solid rgba(255,255,255,.35);
+  color:#eaf4ff;font-size:11px;white-space:nowrap;font-variant-numeric:tabular-nums;
+}
 
 /* ---------- 下拉菜单 / 提示 ---------- */
 .menu{
@@ -309,8 +314,9 @@ td.c-check{text-align:center;padding:0}
 <div class="grid" id="grid">
   <table>
     <colgroup>
-      <col style="width:30px"><col><col style="width:100px"><col style="width:90px">
-      <col style="width:90px"><col style="width:100px">
+      <col style="width:30px"><col><col style="width:88px"><col style="width:56px">
+      <col style="width:56px"><col style="width:50px"><col style="width:46px">
+      <col style="width:54px">
     </colgroup>
     <thead>
       <tr>
@@ -319,7 +325,9 @@ td.c-check{text-align:center;padding:0}
         <th class="sortable c-size" data-sort="size">大小<span class="arrow" id="arrow-size"></span></th>
         <th class="sortable c-sources" data-sort="sources">资源数<span class="arrow" id="arrow-sources"></span></th>
         <th class="c-format">格式</th>
-        <th class="sortable c-speed" data-sort="seeders">下载速度<span class="arrow" id="arrow-seeders"></span></th>
+        <th class="sortable num c-g" data-sort="grabs" title="完成数">G<span class="arrow" id="arrow-grabs"></span></th>
+        <th class="sortable num c-s" data-sort="seeders" title="种子数">S<span class="arrow" id="arrow-seeders"></span></th>
+        <th class="sortable num c-l" data-sort="leechers" title="下载中（连接数 − 种子数）">L<span class="arrow" id="arrow-leechers"></span></th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -352,6 +360,7 @@ td.c-check{text-align:center;padding:0}
   <span id="statusText">服务器正在连接...</span>
   <span class="spacer"></span>
   <span id="statusRight"></span>
+  <span id="portLabel" class="port-label"></span>
 </footer>
 
 <div id="ctxMenu" class="menu ctx hidden">
@@ -391,6 +400,16 @@ td.c-check{text-align:center;padding:0}
   "use strict";
   const $ = (id) => document.getElementById(id);
 
+  // The desktop shell binds an OS-assigned ephemeral port; the WebView is
+  // opened on that exact origin, so location.port is the listening port.
+  const portLabel = $("portLabel");
+  if (location.port) {
+    portLabel.textContent = "端口 " + location.port;
+    portLabel.title = "内嵌服务：http://" + location.host;
+  } else {
+    portLabel.style.display = "none";
+  }
+
   const HOT_POOL = [
     "三体", "阿凡达", "权力的游戏", "周杰伦", "哈利波特", "国家地理",
     "古典音乐", "原神", "Linux", "纪录片", "三体全集", "星际穿越",
@@ -413,7 +432,7 @@ td.c-check{text-align:center;padding:0}
     book:     { cats: [7],    re: /(\.(pdf|epub|mobi|azw3|txt|djvu|chm|cbz|cbr)(\b|$)|电子书|小说|漫画|扫描版|书籍|文集)/i },
     archive:  { cats: [],     re: /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|tbz|cab|iso)(\b|$)/i }
   };
-  const SORTS = ["seeders", "sources", "size", "title"];
+  const SORTS = ["seeders", "grabs", "leechers", "sources", "size", "title"];
 
   const st = {
     indexers: [], groups: [], map: new Map(), selected: new Set(),
@@ -435,11 +454,10 @@ td.c-check{text-align:center;padding:0}
     return (i < 2 ? Math.round(v) : v.toFixed(v >= 100 ? 0 : 1)) + " " + u[i];
   }
 
-  function speedHtml(n) {
-    if (!n) return '<span class="sp s0">&mdash;</span>';
-    const lvl = n >= 100 ? 4 : n >= 30 ? 3 : n >= 10 ? 2 : 1;
-    const txt = ["", "较慢", "一般", "较快", "极快"][lvl];
-    return '<span class="sp s' + lvl + '" title="依据做种数 ' + n + ' 估算">' + txt + "</span>";
+  // Leechers = connected peers minus seeders.
+  function leechHtml(g) {
+    const l = (g.peers || 0) - (g.seeders || 0);
+    return (g.peers || g.seeders) ? Math.max(0, l) : "&mdash;";
   }
 
   // Only real file extensions count. A loose `.xxx` match would turn version
@@ -492,7 +510,7 @@ td.c-check{text-align:center;padding:0}
     if (!g) {
       g = {
         key, title: title || url, size: r.size || null,
-        seeders: r.seeders || 0, peers: r.peers || 0,
+        seeders: r.seeders || 0, peers: r.peers || 0, grabs: r.grabs || 0,
         category: r.category || [], sources: [],
         fmt: fmtFormat(title, r.category), publish: r.publish_date || ""
       };
@@ -510,6 +528,8 @@ td.c-check{text-align:center;padding:0}
     }
     g.seeders = Math.max(g.seeders, src.seeders);
     if (!g.size && r.size) g.size = r.size;
+    g.grabs = Math.max(g.grabs, r.grabs || 0);
+    g.peers = Math.max(g.peers, r.peers || 0);
   }
 
   function matchTab(g) {
@@ -530,6 +550,8 @@ td.c-check{text-align:center;padding:0}
         case "size":    d = (a.size || 0) - (b.size || 0); break;
         case "sources": d = a.sources.length - b.sources.length; break;
         case "title":   d = a.title.localeCompare(b.title, "zh-CN"); break;
+        case "grabs":   d = (a.grabs || 0) - (b.grabs || 0); break;
+        case "leechers": d = ((a.peers || 0) - (a.seeders || 0)) - ((b.peers || 0) - (b.seeders || 0)); break;
         default:        d = (a.seeders || 0) - (b.seeders || 0);
       }
       if (!d) d = b.sources.length - a.sources.length;
@@ -551,7 +573,6 @@ td.c-check{text-align:center;padding:0}
     const shown = list.slice(0, MAX_ROWS);
     const html = shown.map((g) => {
       const sel = st.selected.has(g.key);
-      const sp = speedHtml(g.seeders);
       return '<tr class="' + (sel ? "sel" : "") + '" data-key="' + esc(g.key) + '">' +
         '<td class="c-check"><input type="checkbox" ' + (sel ? "checked" : "") + '></td>' +
         '<td><div class="name-cell"><span class="txt" title="' + esc(g.title) + '">' + esc(g.title) + "</span>" +
@@ -560,7 +581,9 @@ td.c-check{text-align:center;padding:0}
         '<td class="num">' + fmtSize(g.size) + "</td>" +
         '<td class="num">' + g.sources.length + "</td>" +
         '<td>' + g.fmt + "</td>" +
-        '<td>' + sp + "</td>" +
+        '<td class="num stat">' + (g.grabs ? g.grabs : "&mdash;") + "</td>" +
+        '<td class="num stat">' + (g.seeders ? g.seeders : "&mdash;") + "</td>" +
+        '<td class="num stat">' + leechHtml(g) + "</td>" +
       "</tr>";
     }).join("");
     $("tbody").innerHTML = html;
@@ -568,8 +591,17 @@ td.c-check{text-align:center;padding:0}
     if (st.searching && !list.length) {
       $("empty").innerHTML = "<div>正在搜索「<b>" + esc(st.query) + "</b>」…<br><b>结果会边搜边显示</b></div>";
     } else if (!list.length && st.indexers.length) {
-      $("empty").innerHTML = "<div>" + (st.groups.length ? "当前分类 / 筛选条件下没有结果" : "输入关键词后点击「搜 索」开始") +
-        "<br><b>结果会边搜边显示 · 双击某一行可直接下载</b></div>";
+      // When a search finished with zero hits but most sources errored out,
+      // it is almost always the network (these public trackers are mostly
+      // overseas and unreachable without a proxy) — not a config problem.
+      const netFail = (!st.searching && st.groups.length === 0 && st.errors > st.done / 2);
+      $("empty").innerHTML = "<div>" + (st.groups.length ? "当前分类 / 筛选条件下没有结果" : "没有找到结果") +
+        "<br><b>结果会边搜边显示 · 双击某一行可直接下载</b>" +
+        (netFail
+          ? "<br><br>多数搜索源连接失败（" + st.errors + " / " + st.done + "）<br>" +
+            "<b>当前网络可能访问不到这些境外站点，请在右上角「设置」里配置 HTTP 代理</b>"
+          : "") +
+        "</div>";
     }
     $("selInfo").textContent = "已选 " + st.selected.size + " 项";
     $("selAll").checked = !!list.length && list.every((g) => st.selected.has(g.key));
@@ -582,7 +614,7 @@ td.c-check{text-align:center;padding:0}
       const a = $("arrow-" + k);
       if (a) a.textContent = k === st.sort ? (st.desc ? "▼" : "▲") : "";
     }
-    $("btnSort").title = "当前排序：" + ({ seeders: "下载速度", sources: "资源数", size: "大小", title: "名称" })[st.sort] +
+    $("btnSort").title = "当前排序：" + ({ seeders: "种子(S)", grabs: "完成数(G)", leechers: "下载中(L)", sources: "资源数", size: "大小", title: "名称" })[st.sort] +
       (st.desc ? "（降序）" : "（升序）") + " — 点击切换";
   }
 
@@ -613,9 +645,12 @@ td.c-check{text-align:center;padding:0}
     $("btnSearch").textContent = "搜 索";
     $("btnSearch").classList.remove("busy");
     const secs = ((Date.now() - st.start) / 1000).toFixed(1);
+    const netHint = (!failed && st.groups.length === 0 && st.errors > st.done / 2)
+      ? " · 多数源连接失败，试试右上角「设置」配置代理"
+      : "";
     setStatus((failed ? "连接中断" : "搜索完成") + " · " + st.done + " 个公共源 · " +
       st.groups.length + " 条结果 · 用时 " + secs + "s" +
-      (st.errors ? " · " + st.errors + " 个源无响应" : ""));
+      (st.errors ? " · " + st.errors + " 个源无响应" : "") + netHint);
     render();
   }
 

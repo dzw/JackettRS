@@ -188,8 +188,12 @@ pub async fn manualsearch(
 }
 
 /// GET /api/v2.0/indexers/all/results/manualsearch — aggregate variant over
-/// every configured indexer. The desktop shell relies on this so that public
-/// trackers are searchable without any per-indexer configuration.
+/// every `is_configured()` indexer (public trackers with no login count as
+/// configured, so they are included even with an empty Configured Indexer
+/// list). NOTE: the desktop shell does NOT use this endpoint — it fans out
+/// over `/desktop/stream`, which searches all public indexers directly and is
+/// independent of the configured-indexer concept. This route is only for the
+/// standard Jackett admin UI.
 pub async fn manualsearch_all(
     State(state): State<SharedState>,
     Query(params): Query<HashMap<String, String>>,
@@ -455,6 +459,13 @@ struct DesktopRow {
     size: Option<i64>,
     seeders: Option<i64>,
     peers: Option<i64>,
+    /// Snatch / completion count (private trackers). `None` for most public
+    /// indexers, rendered as "—" by the client.
+    grabs: Option<i64>,
+    /// Download volume factor: `0` = freeleech, `1` = normal, `2` = double.
+    download_volume_factor: Option<f64>,
+    /// Upload volume factor: `0` = neutral (no upload required), `1` = normal.
+    upload_volume_factor: Option<f64>,
     category: Vec<i32>,
     magnet: Option<String>,
     link: Option<String>,
@@ -488,6 +499,9 @@ fn desktop_rows(
             size: r.size,
             seeders: r.seeders,
             peers: r.peers,
+            grabs: r.grabs,
+            download_volume_factor: r.download_volume_factor,
+            upload_volume_factor: r.upload_volume_factor,
             category: r.category,
             magnet: r.magnet_uri.map(|u| u.to_string()),
             link: r.link.map(|u| u.to_string()),
